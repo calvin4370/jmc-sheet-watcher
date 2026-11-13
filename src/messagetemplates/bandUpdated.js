@@ -5,9 +5,10 @@
  * [Band Update]
  * - Two-song band #N · 夜の歌 / Night Song
  *
- * Song 1: 夜の歌 / Night Song — 夜バンド / Night Band
+ * Song 1: 夜バンド / Night Band — 夜の歌 / Night Song
  * Song 2: …
  * POC: Name (@handle)
+ * Description: (description text, cut to 100 chars then ...)
  * Complete: ~~No~~ → **Yes**
  *
  * Lead Guitar: ~~Old (@old)~~ → **New (@new)**
@@ -32,6 +33,8 @@ MESSAGE_TEMPLATES.band_changed = {
     var newPoc = after.pointOfContact;
     if (!oldPoc && !newPoc) details.push('POC: —');
     else details.push(personLine('POC', oldPoc, newPoc));
+    var description = tplBandDescription(after);
+    if (description) details.push('Description: ' + description);
     details.push('Complete: ' + (sameText(before.completion, after.completion)
       ? tplInline(after.completion) || '—'
       : tplChange(tplInline(before.completion), tplInline(after.completion))));

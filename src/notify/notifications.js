@@ -6,10 +6,9 @@
 
 var TELEGRAM_MAX_LENGTH = 4096;
 
+/** The template for a change; changes with no template of their own use [Other Change]. */
 function templateFor(change) {
-  var template = MESSAGE_TEMPLATES[change.type];
-  if (!template) throw new Error('No message template for change type "' + change.type + '"');
-  return template;
+  return MESSAGE_TEMPLATES[change.type] || MESSAGE_TEMPLATES.other_change;
 }
 
 /**
@@ -46,18 +45,21 @@ function unclearCells(change) {
 
 /**
  * Builds one notification per change. Band changes come first, then Player Finder.
- * rewrite (optional): function(change, templateText, unclear) -> HTML or ''.
+ * rewrite (optional): function(change, templateText, unclear, template) -> HTML or ''.
+ * It's called for band messages with unclear cells, and for every message whose
+ * template has llmWritesWholeMessage (i.e. [Other Change]).
  * Returns [{ inventory: 'bands'|'playerFinder', change, text, parseMode, llmWritten }].
  */
 function buildNotifications(bandChanges, playerChanges, rewrite) {
   return bandChanges.concat(playerChanges).map(function (change) {
-    var templateText = templateFor(change).render(change);
+    var template = templateFor(change);
+    var templateText = template.render(change);
     var text = templateText;
     var llmWritten = false;
 
     var unclear = unclearCells(change);
-    if (rewrite && unclear.length) {
-      var rewritten = rewrite(change, templateText, unclear);
+    if (rewrite && (unclear.length || template.llmWritesWholeMessage)) {
+      var rewritten = rewrite(change, templateText, unclear, template);
       var withFooter = rewritten ? rewritten + '\n' + SETTINGS.llm.footer : '';
       if (withFooter && withFooter.length <= TELEGRAM_MAX_LENGTH) {
         text = withFooter;

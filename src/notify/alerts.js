@@ -37,6 +37,7 @@ function wantsChange(change, alerts) {
     case 'player_added': return alerts.playerFinder && alerts.playerAdded;
     case 'player_removed': return alerts.playerFinder && alerts.playerRemoved;
     case 'player_changed': return alerts.playerFinder && alerts.playerEdited;
-    default: throw new Error('Unknown change type: ' + change.type);
+    case 'band_other_changed': return alerts.bands && alerts.otherChanges;
+    default: return alerts.otherChanges; // a change type with no template of its own
   }
 }

@@ -101,6 +101,20 @@ function findHeaderRow(grid, sheetName, requiredHeaders) {
   );
 }
 
+/** Short stable hash of a string (cyrb53), used as an ID for sent notifications. */
+function stableHash(text) {
+  var h1 = 0xdeadbeef;
+  var h2 = 0x41c6ce57;
+  for (var i = 0; i < text.length; i++) {
+    var ch = text.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0');
+}
+
 /** True if any of the given columns in the row is non-blank. */
 function rowHasContent(grid, row, cols) {
   for (var i = 0; i < cols.length; i++) {

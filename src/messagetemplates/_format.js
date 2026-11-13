@@ -12,7 +12,7 @@
  *
  * If a band message contains a cell the code can't read reliably (marked
  * "⚠ unclear cell"), the LLM is given the rendered message and asked to rewrite it
- * in the same layout. See src/llm.js.
+ * in the same layout. See src/llm/llm.js.
  */
 
 var MESSAGE_TEMPLATES = MESSAGE_TEMPLATES || {};
@@ -79,13 +79,33 @@ function tplBandLine(band) {
   return '- ' + type + number + (title ? ' · ' + title : '');
 }
 
-/** "title — artist" for one song, or '' if both are blank. */
+/** "artist — title" for one song (just the title if there's no artist), or '' if both are blank. */
 function tplSong(song) {
   if (!song) return '';
   var title = tplBilingual(song.title);
   var artist = tplBilingual(song.artist);
   if (!title && !artist) return '';
-  return (title || '(untitled)') + (artist ? ' — ' + artist : '');
+  return (artist ? artist + ' — ' : '') + (title || '(untitled)');
+}
+
+/** Band descriptions are cut to this many characters, followed by "...". */
+var DESCRIPTION_MAX_CHARS = 100;
+
+/**
+ * The band's Description cell (first row), on one line and cut to
+ * DESCRIPTION_MAX_CHARS characters + "...". '' if there is none.
+ */
+function tplBandDescription(band) {
+  var block = band.block;
+  if (!block) return '';
+  for (var c = 0; c < block.header.length; c++) {
+    if (normaliseHeader(block.header[c]).indexOf('description') === 0) {
+      var text = tplClean(block.rows[0][c]).replace(/\s*\n\s*/g, ' / ');
+      if (text.length > DESCRIPTION_MAX_CHARS) text = text.slice(0, DESCRIPTION_MAX_CHARS) + '...';
+      return tplEscape(text);
+    }
+  }
+  return '';
 }
 
 /** "Song" for one-song bands, "Song 1"/"Song 2" for two-song bands. */
@@ -182,6 +202,8 @@ function tplBandDetails(band) {
     if (text) lines.push(tplSongLabel(band, i) + ': ' + text);
   });
   lines.push(band.pointOfContact ? tplSlotLine('POC', tplPerson(band.pointOfContact), band.pointOfContact) : 'POC: —');
+  var description = tplBandDescription(band);
+  if (description) lines.push('Description: ' + description);
   lines.push('Complete: ' + (tplInline(band.completion) || '—'));
   return lines.join('\n');
 }

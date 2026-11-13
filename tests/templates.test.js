@@ -49,7 +49,7 @@ test('new band message', () => {
     '<b>[New Band]</b>',
     '- One-song band #3 · 夜の歌 / Night Song',
     '',
-    'Song: 夜の歌 / Night Song — 夜バンド / Night Band',
+    'Song: 夜バンド / Night Band — 夜の歌 / Night Song',
     'POC: Kim (@kim)',
     'Complete: No',
     '',
@@ -181,4 +181,21 @@ test('saved switches missing a newer setting fall back to the default', () => {
   assert.equal(alerts.songs, false);
   assert.equal(alerts.members, true);
   assert.equal('notARealSwitch' in alerts, false);
+});
+
+test('band messages show the description after POC, cut to 100 characters', () => {
+  const long = 'x'.repeat(120);
+  const withDesc = (d) => band({ 'Description / Points to Take Note': [d, ''] });
+  const [added] = messagesFor(run({}, { oneSong: [withDesc('looking for\nkeys & vox')] }));
+  assert.match(added.text, /\nPOC: Kim \(@kim\)\nDescription: looking for \/ keys &amp; vox\nComplete: No\n/);
+
+  const result = run({ oneSong: [withDesc(long)] }, { oneSong: [{ ...withDesc(long), cells: { ...withDesc(long).cells, 'Complete?': ['Yes', ''] } }] });
+  const [update] = messagesFor(result);
+  assert.match(update.text, new RegExp('\nDescription: ' + 'x'.repeat(100) + '\.\.\.\nComplete: '));
+
+  const [removed] = messagesFor(run({ oneSong: [withDesc('hi')] }, {}));
+  assert.match(removed.text, /\nDescription: hi\nComplete: No/);
+
+  const [none] = messagesFor(run({}, { oneSong: [band()] }));
+  assert.doesNotMatch(none.text, /Description/);
 });

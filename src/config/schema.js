@@ -57,6 +57,12 @@ var TWO_SONG_SCHEMA = {
   otherInstruments: 'Other Insts'
 };
 
+/**
+ * Signup columns never alerted on, matched by the start of the header. Points is a
+ * formula that recalculates whenever any band changes.
+ */
+var IGNORED_HEADER_PREFIXES = ['points'];
+
 /** Player Finder: one row per person (not paired). */
 var PLAYER_FINDER_COLUMNS = {
   serial: 'S/N',

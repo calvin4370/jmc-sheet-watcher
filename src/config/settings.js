@@ -11,8 +11,17 @@ var SETTINGS = {
   // Owner-only settings. These apply to everyone.
   // ---------------------------------------------------------------------------
 
-  // How often to check the sheet, in minutes.
+  // How often to check the sheet, in minutes: 1, 5, 10, 15 or 30 (Apps Script's
+  // timer options). Bot messages don't wait for this: they're handled instantly.
+  // After changing it, run setup() again.
   checkEveryMinutes: 5,
+
+  // Telegram webhook: the deployed web app Telegram sends bot messages to.
+  // deploymentId is filled in when the web app is first deployed; it stays the same
+  // across updates.
+  webhook: {
+    deploymentId: 'AKfycbwwGeWl8f2hWxX-VqqwF3oNiN-OkavqRNyPrXedVQUwqzdZqtS2Icj5IEfjqQEew2cL'
+  },
 
   // Who may subscribe. 'owner-approval': people press Start, you approve them.
   subscriptions: 'owner-approval',
@@ -49,6 +58,7 @@ var SETTINGS = {
     songs: true,               // song title or artist edited
     pointOfContact: true,      // point of contact changed
     completion: true,          // "Complete?" changed
+    otherChanges: true,        // [Other Change]: e.g. Description or YouTube link edited
 
     // Player Finder
     playerFinder: true,        // master switch for all Player Finder alerts below

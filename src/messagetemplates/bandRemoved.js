@@ -5,8 +5,9 @@
  * [Band Removed]
  * - One-song band #N · 夜の歌 / Night Song
  *
- * Song: …
+ * Song: 夜バンド / Night Band — 夜の歌 / Night Song
  * POC: Name (@handle)
+ * Description: (description text, cut to 100 chars then ...)
  * Complete: No
  *
  * Lead Guitar: Name (@handle)

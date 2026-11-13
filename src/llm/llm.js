@@ -1,10 +1,16 @@
 /*
- * LLM rewrite of band messages that contain an unclear cell (SOC LaaS, an
- * OpenAI-compatible chat API).
+ * LLM-written messages (SOC LaaS, an OpenAI-compatible chat API). Two cases:
  *
- * When it runs: only for a band message where a person cell is new/changed and the
- * code marks it "⚠ unclear cell" (see cellChecks.js). All other messages are sent
- * exactly as the template wrote them, with no LLM call.
+ * 1. Unclear cells: a band message where a person cell is new/changed and the code
+ *    marks it "⚠ unclear cell" (see cellChecks.js). The LLM rewrites the template's
+ *    message (validateRewrite, below).
+ * 2. [Other Change]: changes no other template covers (see
+ *    messagetemplates/otherChange.js). The LLM writes the whole message
+ *    (validateOtherChange).
+ *
+ * All other messages are sent exactly as their template wrote them, with no LLM call.
+ *
+ * Case 1 in detail:
  *
  * What the LLM gets: the template's message, the band's raw cell block (header row +
  * the band's two rows; for updates also the previous version), and the unclear cells.
@@ -70,29 +76,74 @@ function llmWords(text) {
   return (text.match(/[\p{L}\p{N}]+/gu) || []).map(function (w) { return w.toLowerCase(); });
 }
 
-/** Checks the LLM's message. Returns { ok: true, html } or { ok: false, reason }. */
-function validateRewrite(output, templateText, change, unclear) {
-  var fail = function (reason) { return { ok: false, reason: reason }; };
-  if (typeof output !== 'string') return fail('no text');
-
-  var text = output.replace(/\r\n/g, '\n').trim();
+/** Trims the LLM's text and removes code fences and a footer it may have added. */
+function llmCleanOutput(output) {
+  var text = String(output).replace(/\r\n/g, '\n').trim();
   var fenced = text.match(/^```[a-zA-Z]*\n([\s\S]*?)\n```$/);
   if (fenced) text = fenced[1].trim();
   var footer = SETTINGS.llm.footer.trim();
-  text = text.split('\n').filter(function (line) { return line.trim() !== footer; }).join('\n').trim();
-  if (!text) return fail('empty');
+  return text.split('\n').filter(function (line) { return line.trim() !== footer; }).join('\n').trim();
+}
 
-  // HTML: only <b>, <i>, <s>, properly nested; & only as an entity.
+/** '' if the HTML only uses <b>, <i>, <s>, properly nested, with & only as an entity. */
+function llmMarkupProblem(text) {
   var stack = [];
   var tagRe = /<[^>]*>|<|&(?!amp;|lt;|gt;)/g;
   var m;
   while ((m = tagRe.exec(text)) !== null) {
     var tag = m[0].match(/^<(\/?)([bis])>$/);
-    if (!tag) return fail('disallowed markup or unescaped character');
+    if (!tag) return 'disallowed markup or unescaped character';
     if (!tag[1]) stack.push(tag[2]);
-    else if (stack.pop() !== tag[2]) return fail('unbalanced tags');
+    else if (stack.pop() !== tag[2]) return 'unbalanced tags';
   }
-  if (stack.length) return fail('unclosed tag');
+  return stack.length ? 'unclosed tag' : '';
+}
+
+/** Words and @handles the LLM may use: from the given source texts plus filler words. */
+function llmAllowedVocabulary(sources, extraWords) {
+  var sourceText = sources.join('\n');
+  var words = {};
+  llmWords(sourceText).concat(LLM_FILLER_WORDS, extraWords || []).forEach(function (w) { words[w] = true; });
+  var handles = {};
+  (sourceText.match(/@[A-Za-z0-9_]+/g) || []).forEach(function (h) { handles[h] = true; });
+  return { words: words, handles: handles };
+}
+
+/** '' if every word and @handle in the lines is allowed, else the problem. */
+function llmVocabularyProblem(lines, vocab) {
+  for (var i = 0; i < lines.length; i++) {
+    var plain = llmUnescape(lines[i]);
+    var handles = plain.match(/@[A-Za-z0-9_]+/g) || [];
+    for (var h = 0; h < handles.length; h++) {
+      if (!vocab.handles[handles[h]]) return 'a handle is not in the cells';
+    }
+    var words = llmWords(plain.replace(/@[A-Za-z0-9_]+/g, ' '));
+    for (var w = 0; w < words.length; w++) {
+      if (!vocab.words[words[w]]) return 'a word is not in the cells: "' + words[w] + '"';
+    }
+  }
+  return '';
+}
+
+/** All text in a band's raw cell block(s). */
+function blockTexts(change) {
+  var out = [];
+  [change.band && change.band.block, change.previous && change.previous.block].forEach(function (block) {
+    if (block) out = out.concat(block.header, block.rows[0], block.rows[1]);
+  });
+  return out;
+}
+
+/** Checks the LLM's message. Returns { ok: true, html } or { ok: false, reason }. */
+function validateRewrite(output, templateText, change, unclear) {
+  var fail = function (reason) { return { ok: false, reason: reason }; };
+  if (typeof output !== 'string') return fail('no text');
+
+  var text = llmCleanOutput(output);
+  if (!text) return fail('empty');
+
+  var markup = llmMarkupProblem(text);
+  if (markup) return fail(markup);
 
   // Every clear template line must be kept, exactly and in order.
   var expected = templateText.split('\n').filter(function (l) {
@@ -109,29 +160,10 @@ function validateRewrite(output, templateText, change, unclear) {
   if (extra.length > 4 * unclear.length + 2) return fail('too many new lines (' + extra.length + ')');
 
   // New lines may only use words and handles found in the band's cells.
-  var sources = [];
-  [change.band.block, change.previous && change.previous.block].forEach(function (block) {
-    if (!block) return;
-    sources = sources.concat(block.header, block.rows[0], block.rows[1]);
-  });
+  var sources = blockTexts(change);
   templateText.split('\n').forEach(function (l) { if (l.indexOf(UNCLEAR_MARKER) >= 0) sources.push(llmUnescape(l)); });
-  var sourceText = sources.join('\n');
-  var allowedWords = {};
-  llmWords(sourceText).concat(LLM_FILLER_WORDS).forEach(function (w) { allowedWords[w] = true; });
-  var allowedHandles = {};
-  (sourceText.match(/@[A-Za-z0-9_]+/g) || []).forEach(function (h) { allowedHandles[h] = true; });
-
-  for (var i = 0; i < extra.length; i++) {
-    var plain = llmUnescape(extra[i]);
-    var handles = plain.match(/@[A-Za-z0-9_]+/g) || [];
-    for (var h = 0; h < handles.length; h++) {
-      if (!allowedHandles[handles[h]]) return fail('a handle in a new line is not in the cells');
-    }
-    var words = llmWords(plain.replace(/@[A-Za-z0-9_]+/g, ' '));
-    for (var w = 0; w < words.length; w++) {
-      if (!allowedWords[words[w]]) return fail('a word in a new line is not in the cells: "' + words[w] + '"');
-    }
-  }
+  var vocabProblem = llmVocabularyProblem(extra, llmAllowedVocabulary(sources));
+  if (vocabProblem) return fail('new line: ' + vocabProblem);
 
   // Nobody from an unclear cell may be dropped.
   var outputPlain = llmUnescape(text);
@@ -145,15 +177,106 @@ function validateRewrite(output, templateText, change, unclear) {
   return { ok: true, html: text };
 }
 
+/* ---------------- [Other Change]: the LLM writes the whole message ---------------- */
+
+var OTHER_CHANGE_HEADER = '<b>[Other Change]</b>';
+
+/** Extra words allowed in an [Other Change] message. */
+var LLM_OTHER_CHANGE_WORDS = [
+  'change', 'changed', 'changes', 'update', 'updated', 'edited', 'added', 'removed', 'cleared',
+  'was', 'now', 'new', 'old', 'previous', 'previously', 'text', 'link', 'row', 'column', 'cell',
+  'first', 'second', 'band', 'one', 'two'
+];
+
+function llmOtherChangePrompt(change, fallbackText, template) {
+  var system = [
+    'You write Telegram notifications for a university music club\'s band signup sheet.',
+    'This change is not covered by the regular message templates. You are given:',
+    '- fallbackMessage: a plain version of the message, made by the code (Telegram HTML).',
+    '- changedCells: the cells that changed, with their column header and old and new text.',
+    '- currentCells / previousCells: the band\'s raw cells (header row, then the band\'s two rows)',
+    '  after and before the change.',
+    '',
+    'Write the complete message.',
+    'Rules:',
+    '1. The first line must be exactly: ' + OTHER_CHANGE_HEADER,
+    '2. The second line identifies the band exactly as in fallbackMessage\'s second line.',
+    '3. ' + template.llmTask,
+    '4. Use only names, @handles and words that appear in the cells or fallbackMessage. Never',
+    '   invent or change people, handles, songs, bands, numbers or changes.',
+    '5. Use only these HTML tags: <b>, <i>, <s>. Write & < > in text as &amp; &lt; &gt;.',
+    '6. Output only the message: no explanations, no code fences, no sign-off.'
+  ].join('\n');
+  var user = JSON.stringify(change.band ? {
+    changeType: change.type,
+    bandType: change.band.bandType,
+    fallbackMessage: fallbackText,
+    changedCells: change.cells,
+    currentCells: change.band.block,
+    previousCells: change.previous ? change.previous.block : undefined
+  } : { changeType: change.type, fallbackMessage: fallbackText, change: change });
+  return { system: system, user: user };
+}
+
+/**
+ * Checks an LLM-written [Other Change] message: bold header first, band line kept,
+ * only words/handles from the cells, and each changed cell's new text quoted exactly
+ * (unless it is long or was cleared).
+ */
+function validateOtherChange(output, fallbackText, change) {
+  var fail = function (reason) { return { ok: false, reason: reason }; };
+  if (typeof output !== 'string') return fail('no text');
+  var text = llmCleanOutput(output);
+  if (!text) return fail('empty');
+  if (text.length > 3500) return fail('too long');
+
+  var markup = llmMarkupProblem(text);
+  if (markup) return fail(markup);
+
+  var lines = text.split('\n');
+  var fallbackLines = fallbackText.split('\n');
+  if (lines[0] !== OTHER_CHANGE_HEADER) return fail('missing the bold [Other Change] header');
+  if (change.band && lines[1] !== fallbackLines[1]) return fail('band line was changed');
+
+  var sources = blockTexts(change).concat(llmUnescape(fallbackText));
+  if (!change.band) sources.push(JSON.stringify(change));
+  (change.cells || []).forEach(function (c) { sources.push(c.header, c.before, c.after); });
+  var problem = llmVocabularyProblem(lines.slice(1), llmAllowedVocabulary(sources, LLM_OTHER_CHANGE_WORDS));
+  if (problem) return fail(problem);
+
+  var plain = llmUnescape(text);
+  var cells = change.cells || [];
+  for (var i = 0; i < cells.length; i++) {
+    var after = String(cells[i].after).trim();
+    if (after && after.length <= 200 && plain.indexOf(after) < 0) return fail('a changed cell\'s new text is not quoted exactly');
+  }
+  return { ok: true, html: text };
+}
+
 /** Calls the OpenAI-compatible chat completions endpoint with retries. Returns the text. */
 function llmComplete(config, systemPrompt, userContent, http, sleep) {
+  return llmChat(config, [
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: userContent }
+  ], http, sleep);
+}
+
+/**
+ * Returns chat(messages) -> answer text for the owner's questions (assistant.js), or
+ * null if SoC LaaS isn't configured. Throws on failure (after retries).
+ */
+function createLlmChat(deps) {
+  var config = deps.config || {};
+  if (!SETTINGS.llm.enabled || !config.baseUrl || !config.apiKey || !config.model) return null;
+  return function (messages) { return llmChat(config, messages, deps.http, deps.sleep); };
+}
+
+/** One chat completion with retries. Returns the text. */
+function llmChat(config, messages, http, sleep) {
   var url = config.baseUrl.replace(/\/+$/, '') + '/chat/completions';
   var payload = JSON.stringify({
     model: config.model,
-    messages: [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: userContent }
-    ],
+    messages: messages,
     temperature: 0.2,
     max_tokens: 1500
   });
@@ -210,20 +333,26 @@ function createLlmRewriter(deps) {
     deps.log('LLM is on but SOCLAAS_BASE_URL, SOCLAAS_API_KEY or SOCLAAS_MODEL is not set; using template messages.');
   }
 
-  return function rewrite(change, templateText, unclear) {
+  return function rewrite(change, templateText, unclear, template) {
     if (!ready || calls >= SETTINGS.llm.maxCallsPerRun) return '';
     calls++;
+    var label = change.band ? change.band.id : change.type;
+    var whole = template && template.llmWritesWholeMessage;
     try {
-      var prompt = llmRewritePrompt(change, templateText, unclear);
+      var prompt = whole
+        ? llmOtherChangePrompt(change, templateText, template)
+        : llmRewritePrompt(change, templateText, unclear);
       var output = llmComplete(config, prompt.system, prompt.user, deps.http, deps.sleep);
-      var result = validateRewrite(output, templateText, change, unclear);
+      var result = whole
+        ? validateOtherChange(output, templateText, change)
+        : validateRewrite(output, templateText, change, unclear);
       if (!result.ok) {
-        deps.log('LLM message rejected for ' + change.band.id + ': ' + result.reason);
+        deps.log('LLM message rejected for ' + label + ': ' + result.reason);
         return '';
       }
       return result.html;
     } catch (error) {
-      deps.log('LLM call failed for ' + change.band.id + ': ' + error.message);
+      deps.log('LLM call failed for ' + label + ': ' + error.message);
       return '';
     }
   };

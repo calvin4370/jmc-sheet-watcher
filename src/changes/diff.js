@@ -91,6 +91,38 @@ function diffBand(before, after) {
   return changes;
 }
 
+/**
+ * Cells that changed in a band's "other" columns (not read into the band record and
+ * not ignored, e.g. Description, YouTube Link, or columns added later).
+ * Returns [{ column, header, row: 'first'|'second', before, after }].
+ */
+function diffOtherCells(before, after) {
+  var b = before.block;
+  var a = after.block;
+  if (!b || !a) return [];
+  var skip = {};
+  a.readColumns.concat(a.ignoredColumns, b.readColumns, b.ignoredColumns).forEach(function (c) { skip[c] = true; });
+  var width = Math.max(a.header.length, b.header.length);
+  var cells = [];
+  for (var c = 0; c < width; c++) {
+    if (skip[c]) continue;
+    for (var r = 0; r < 2; r++) {
+      var oldText = b.rows[r][c] === undefined ? '' : b.rows[r][c];
+      var newText = a.rows[r][c] === undefined ? '' : a.rows[r][c];
+      if (!sameText(oldText, newText)) {
+        cells.push({
+          column: columnLetter(c),
+          header: a.header[c] !== undefined ? a.header[c] : (b.header[c] || ''),
+          row: r === 0 ? 'first' : 'second',
+          before: oldText,
+          after: newText
+        });
+      }
+    }
+  }
+  return cells;
+}
+
 function diffBands(previousBands, currentBands) {
   var previous = indexBy(previousBands, function (b) { return b.id; });
   var current = indexBy(currentBands, function (b) { return b.id; });
@@ -104,6 +136,10 @@ function diffBands(previousBands, currentBands) {
     var fieldChanges = diffBand(old, band);
     if (fieldChanges.length) {
       changes.push({ type: 'band_changed', band: band, previous: old, changes: fieldChanges });
+    }
+    var otherCells = diffOtherCells(old, band);
+    if (otherCells.length) {
+      changes.push({ type: 'band_other_changed', band: band, previous: old, cells: otherCells });
     }
   });
   previousBands.forEach(function (band) {

@@ -51,6 +51,16 @@ function parseSignupSheet(grid, schema) {
   subCols.forEach(function (s) { contentCols.push(s.col); });
   contentCols = contentCols.concat(otherCols);
 
+  // Columns the band record reads (anything else, apart from ignored ones such as
+  // Points, is an "other" column: changes there become [Other Change] messages).
+  var readCols = [BAND_NUMBER_COLUMN, col(schema.completion)].concat(contentCols);
+  var ignoredCols = [];
+  Object.keys(header.columns).forEach(function (key) {
+    IGNORED_HEADER_PREFIXES.forEach(function (prefix) {
+      if (key.indexOf(prefix) === 0) ignoredCols.push(header.columns[key]);
+    });
+  });
+
   var warnings = [];
   var warn = function (row, message) {
     warnings.push({ sheet: sheet, row: row + 1, message: message });
@@ -133,7 +143,9 @@ function parseSignupSheet(grid, schema) {
     var block = {
       range: 'A' + (p + 1) + ':' + columnLetter(lastCol) + (p + 2),
       header: rowCells(header.row),
-      rows: [rowCells(p), rowCells(p + 1)]
+      rows: [rowCells(p), rowCells(p + 1)],
+      readColumns: readCols,
+      ignoredColumns: ignoredCols
     };
 
     bands.push({
