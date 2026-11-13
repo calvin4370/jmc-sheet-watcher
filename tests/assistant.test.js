@@ -92,8 +92,14 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
     ['sendMessage', '<i>Thinking…</i>'],
     ['sendMessage', '<i>Called tool: get_band (band_type: one-song, number: 1)</i>'],
     ['sendMessage', '<b>[SoC LaaS Response]</b>\nKim (@kim) is the POC of one-song band #1.'],
-    ['deleteMessage', 1]
+    ['deleteMessages', undefined]
   ]);
+  // "Thinking…" and the "Called tool" message are deleted together, after the answer.
+  const idOf = (text) => ctx.api.calls.findIndex((c) => c.params.text === text) + 1; // the fake numbers by call order
+  assert.deepEqual(ctx.api.calls.find((c) => c.method === 'deleteMessages').params, {
+    chat_id: OWNER,
+    message_ids: [idOf('<i>Thinking…</i>'), idOf('<i>Called tool: get_band (band_type: one-song, number: 1)</i>')]
+  });
 });
 
 test('several tool calls in one round are all run and shown', () => {
@@ -339,4 +345,23 @@ test('without SoC LaaS configured, the owner gets the normal reply', () => {
   runDeferred();
   assert.equal(calls.length, 0);
   assert.match(ctx.api.sent(OWNER).at(-1).params.text, /^<b>\[Help\]<\/b>/);
+});
+
+test('if Telegram can\'t delete the tool messages together, they are deleted one by one', () => {
+  const { ctx, runDeferred } = setup({
+    replies: [
+      { role: 'assistant', content: null, tool_calls: [toolCall('t1', 'list_bands', {}), toolCall('t2', 'list_player_finder', {})] },
+      'Done.'
+    ]
+  });
+  const call = ctx.api.call;
+  ctx.api.call = (method, params) => {
+    if (method === 'deleteMessages') { ctx.api.calls.push({ method, params }); const e = new Error('Bad Request'); e.status = 400; throw e; }
+    return call(method, params);
+  };
+  g.handleUpdate(msg(OWNER, 'overview please'), ctx);
+  runDeferred();
+  const singles = ctx.api.calls.filter((c) => c.method === 'deleteMessage').map((c) => c.params.message_id);
+  assert.equal(singles.length, 3, 'Thinking… and both tool messages');
+  assert.deepEqual(singles, ctx.api.calls.find((c) => c.method === 'deleteMessages').params.message_ids);
 });

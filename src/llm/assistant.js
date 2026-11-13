@@ -9,7 +9,8 @@
  *    it calls tools (below) to fetch only what it needs, e.g. one band or Player Finder.
  *    Only tool results are sent to it.
  *  - Each tool call is shown to the owner as "Called tool: …" after "Thinking…".
- *    "Thinking…" is deleted when the answer is sent; the tool-call messages stay.
+ *    "Thinking…" and the tool-call messages are deleted when the answer is sent (owner
+ *    decision, to keep the chat tidy). [Confirm] messages stay until tapped.
  *  - The LLM must answer only from the sheet data, and say when it doesn't know.
  *  - It also gets the person's last 5 questions (for follow-ups like "and band 4?") and
  *    their Telegram name and @handle (so "me" questions work). Owner decision: SoC LaaS's
@@ -331,11 +332,30 @@ function answerOwnerQuestion(later, job) {
   } catch (e) {
     later.log('Could not send the SoC LaaS answer: ' + e.message);
   }
-  if (job.thinkingMessageId) {
+  // Tidy up: "Thinking…" and the "Called tool: …" messages go once the answer is sent.
+  deleteChatMessages(later, job.chatId, [job.thinkingMessageId].concat(job.toolMessageIds || []));
+}
+
+/** Deletes bot messages: one at a time, or up to 100 per call (falling back one by one). */
+function deleteChatMessages(later, chatId, ids) {
+  ids = ids.filter(function (id) { return id; });
+  if (ids.length === 1) {
     try {
-      later.api.call('deleteMessage', { chat_id: job.chatId, message_id: job.thinkingMessageId });
+      later.api.call('deleteMessage', { chat_id: chatId, message_id: ids[0] });
     } catch (e) {
-      later.log('Could not delete "Thinking…": ' + e.message);
+      later.log('Could not delete a message: ' + e.message);
+    }
+    return;
+  }
+  for (var i = 0; i < ids.length; i += 100) {
+    var batch = ids.slice(i, i + 100);
+    try {
+      later.api.call('deleteMessages', { chat_id: chatId, message_ids: batch });
+    } catch (e) {
+      later.log('Could not delete messages together (' + e.message + '); deleting one by one.');
+      batch.forEach(function (id) {
+        try { later.api.call('deleteMessage', { chat_id: chatId, message_id: id }); } catch (err) { /* already gone */ }
+      });
     }
   }
 }
@@ -360,7 +380,8 @@ function runAssistantConversation(later, job, snapshot) {
       var args;
       try { args = JSON.parse(call['function'].arguments || '{}'); } catch (e) { args = undefined; }
       try {
-        botSend(later, job.chatId, '<i>' + tplEscape('Called tool: ' + describeToolCall(name, args || {})) + '</i>');
+        var shown = botSend(later, job.chatId, '<i>' + tplEscape('Called tool: ' + describeToolCall(name, args || {})) + '</i>');
+        if (shown && shown.message_id) (job.toolMessageIds = job.toolMessageIds || []).push(shown.message_id);
       } catch (e) {
         later.log('Could not show a tool call: ' + e.message);
       }
