@@ -8,6 +8,7 @@
  *   ownerChatId,           // owner's Telegram chat ID
  *   readSheets(),          // -> { sheetName: 2D display strings }
  *   rewrite,               // LLM rewriter for unclear cells, or null
+ *   setTimerMinutes(m),    // optional: run the sheet timer every m minutes (main.js)
  *   now(), sleep(ms), log(message)
  * }
  */
@@ -134,9 +135,21 @@ function reportProblem(ctx, message) {
   if (ctx.ownerChatId) botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Problem]</b>\n' + tplEscape(message), dismissButton());
 }
 
+/** Sets how often the sheet timer runs (does nothing if it already runs that often). */
+function setCheckTimer(ctx, minutes) {
+  if (!ctx.setTimerMinutes) return;
+  try {
+    ctx.setTimerMinutes(minutes);
+  } catch (e) {
+    ctx.log('Could not change the sheet timer to every ' + minutes + ' min: ' + e.message);
+  }
+}
+
 /**
- * Checks the sheet and sends alerts. Returns { ok, baseline, sent }.
+ * Checks the sheet and sends alerts. Returns { ok, baseline, sent, settling? }.
  * - First run: saves a baseline silently.
+ * - Waits for edits to settle (SETTINGS.settle): a change is only sent once several
+ *   checks in a row see the same sheet; meanwhile the sheet is checked every minute.
  * - Missing worksheet/header or read failure: tells the owner, keeps the old snapshot.
  * - Each subscriber gets only the messages their switches allow, each at most once.
  * - If a message can't be sent for a temporary reason, the old snapshot is kept so the
@@ -169,7 +182,21 @@ function runSheetCheck(ctx) {
 
   if (!result.bandChanges.length && !result.playerChanges.length) {
     state.snapshot = result.snapshot;
+    state.settling = null; // e.g. an edit was undone before it settled
+    setCheckTimer(ctx, SETTINGS.checkEveryMinutes);
     return { ok: true, baseline: false, sent: 0 };
+  }
+
+  // Wait for edits to settle: compare everything the watcher reads with the last check.
+  var settle = SETTINGS.settle;
+  var hash = stableHash(JSON.stringify(result.snapshot));
+  var s = state.settling || (state.settling = { since: ctx.now(), checks: 0, same: 0, hash: '' });
+  s.checks++;
+  s.same = s.hash === hash ? s.same + 1 : 1;
+  s.hash = hash;
+  if (s.same < settle.sameChecks && s.checks < settle.maxChecks) {
+    setCheckTimer(ctx, settle.checkEveryMinutes);
+    return { ok: true, baseline: false, sent: 0, settling: true };
   }
 
   var notifications = buildNotifications(result.bandChanges, result.playerChanges, ctx.rewrite);
@@ -210,9 +237,13 @@ function runSheetCheck(ctx) {
   });
 
   if (retryLater) {
+    // Keep the old snapshot (and the settling count), so the next check sends the rest.
+    setCheckTimer(ctx, SETTINGS.checkEveryMinutes);
     reportProblem(ctx, 'Some alerts could not be sent. The watcher will try again on its next check.');
     return { ok: false, baseline: false, sent: sent };
   }
   state.snapshot = result.snapshot;
+  state.settling = null;
+  setCheckTimer(ctx, SETTINGS.checkEveryMinutes);
   return { ok: true, baseline: false, sent: sent };
 }

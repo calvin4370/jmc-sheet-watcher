@@ -61,8 +61,7 @@ function setup() {
     console.log('✓ Created the webhook secret (stored in Script Properties).');
   }
 
-  removeTimers();
-  ScriptApp.newTrigger('tick').timeBased().everyMinutes(SETTINGS.checkEveryMinutes).create();
+  appsScriptSetTimerMinutes(SETTINGS.checkEveryMinutes, true);
   console.log('✓ Sheet timer: every ' + SETTINGS.checkEveryMinutes + ' minutes.');
 
   var ctx = appsScriptContext(appsScriptLoadState());
@@ -169,6 +168,25 @@ function removeTimers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
     if (t.getHandlerFunction() === 'tick') ScriptApp.deleteTrigger(t);
   });
+  PropertiesService.getScriptProperties().deleteProperty(TIMER_MINUTES_PROPERTY);
+}
+
+/** Script Property holding how often the sheet timer currently runs. */
+var TIMER_MINUTES_PROPERTY = 'TIMER_MINUTES';
+
+/**
+ * Makes the sheet timer run every `minutes` (1 while edits settle, otherwise
+ * SETTINGS.checkEveryMinutes). Does nothing if it already does, unless `force`.
+ */
+function appsScriptSetTimerMinutes(minutes, force) {
+  var props = PropertiesService.getScriptProperties();
+  if (!force && props.getProperty(TIMER_MINUTES_PROPERTY) === String(minutes)) return;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'tick') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('tick').timeBased().everyMinutes(minutes).create();
+  props.setProperty(TIMER_MINUTES_PROPERTY, String(minutes));
+  console.log('Sheet timer: every ' + minutes + ' minute(s).');
 }
 
 /** Runs fn(state, ctx) under the script lock (skips if another run holds it). */
@@ -273,6 +291,7 @@ function appsScriptContext(state) {
     saveAnswer: saveAssistantAnswer,
     updateState: updateStoredState,
     readState: appsScriptLoadState,
+    setTimerMinutes: function (minutes) { appsScriptSetTimerMinutes(minutes, false); },
     llmRequestsToday: appsScriptLlmRequestsToday,
     now: function () { return Date.now(); },
     sleep: sleep,

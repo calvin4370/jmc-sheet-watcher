@@ -16,6 +16,13 @@ var SETTINGS = {
   // After changing it, run setup() again.
   checkEveryMinutes: 5,
 
+  // Waiting for edits to settle (owner decision): when a check finds a change, no alerts
+  // are sent yet and the sheet is checked every `checkEveryMinutes` (1) instead. Alerts
+  // go out once `sameChecks` checks in a row see the same sheet (the check that found the
+  // change counts as the first), or after `maxChecks` checks if it keeps changing. Then
+  // checks go back to every SETTINGS.checkEveryMinutes.
+  settle: { sameChecks: 3, maxChecks: 10, checkEveryMinutes: 1 },
+
   // Telegram webhook: the deployed web app Telegram sends bot messages to.
   // deploymentId is filled in when the web app is first deployed; it stays the same
   // across updates.

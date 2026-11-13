@@ -1,6 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const g = require('./helpers/load');
+// These tests are about what alerts say and who gets them, so alerts go out on the
+// first check. Waiting for edits to settle is tested in settle.test.js.
+g.SETTINGS.settle.sameChecks = 1;
 const { workbook } = require('./helpers/grids');
 const { fakeApi, fakeCtx, msg, tap } = require('./helpers/fakes');
 

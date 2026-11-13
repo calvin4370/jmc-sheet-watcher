@@ -31,6 +31,11 @@ function statusMessage(ctx) {
     }
   }
   lines.push('<b>Last sheet check:</b> ' + check);
+  if (state.settling) {
+    lines.push('<b>Waiting for edits to settle:</b> ' + state.settling.same + '/' + SETTINGS.settle.sameChecks +
+      ' same checks (check ' + state.settling.checks + ' of at most ' + SETTINGS.settle.maxChecks + ', every ' +
+      SETTINGS.settle.checkEveryMinutes + ' min)');
+  }
   lines.push('<b>Problem:</b> ' + (state.lastError ? '⚠ ' + tplEscape(state.lastError) : 'none'));
 
   var counts = {};
