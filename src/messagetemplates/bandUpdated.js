@@ -12,8 +12,9 @@
  * ┃ (full description text, in an expandable box)
  * Complete: ~~No~~ → **Yes**
  *
- * Lead Guitar: ~~Old (@old)~~ → **New (@new)**
- * Bass: Name (@handle)
+ * Lead Guitar: 🔄 ~~Old (@old)~~ → **New (@new)**     (someone swapped in)
+ * Bass: 🆕 **Name (@handle)**        (someone filled a previously empty slot)
+ * Drums: Name (@handle)
  */
 var MESSAGE_TEMPLATES = MESSAGE_TEMPLATES || {};
 
@@ -65,7 +66,7 @@ MESSAGE_TEMPLATES.band_changed = {
     after.otherInstruments.forEach(function (o) {
       var k = leftover.map(personKey).indexOf(personKey(o));
       if (k >= 0) leftover.splice(k, 1);
-      roster.push(tplSlotLine('Other', k >= 0 ? tplPerson(o) : tplChange('', tplPerson(o)), o));
+      roster.push(tplSlotLine('Other', k >= 0 ? tplPerson(o) : tplNewPerson(tplPerson(o)), o));
     });
     leftover.forEach(function (o) { roster.push('Other: ' + tplChange(tplPerson(o), '')); });
 
@@ -77,10 +78,16 @@ MESSAGE_TEMPLATES.band_changed = {
   }
 };
 
-/** "Label: value" for a person slot, highlighting a change and noting cell issues. */
+/**
+ * "Label: value" for a person slot, highlighting a change and noting cell issues.
+ * A previously empty slot that gets someone shows "Label: 🆕 **Name (@handle)**";
+ * a swap shows "Label: 🔄 ~~Old (@old)~~ → **New (@new)**".
+ */
 function personLine(label, oldPerson, newPerson) {
-  var value = personKey(oldPerson) === personKey(newPerson)
-    ? tplPerson(newPerson)
-    : tplChange(tplPerson(oldPerson), tplPerson(newPerson));
+  var value;
+  if (personKey(oldPerson) === personKey(newPerson)) value = tplPerson(newPerson);
+  else if (!oldPerson) value = tplNewPerson(tplPerson(newPerson));
+  else if (newPerson) value = '🔄 ' + tplChange(tplPerson(oldPerson), tplPerson(newPerson));
+  else value = tplChange(tplPerson(oldPerson), tplPerson(newPerson));
   return newPerson ? tplSlotLine(label, value, newPerson) : label + ': ' + value;
 }

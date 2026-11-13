@@ -75,11 +75,11 @@ test('band update shows the whole band with changes struck out and bolded', () =
     'POC: Kim (@kim)',
     'Complete: <s>No</s> → <b>Yes</b>',
     '',
-    'Keyboard: <b>Quinn (@quinn)</b> (new)',
+    'Keyboard: 🆕 <b>Quinn (@quinn)</b>',
     'Bass: Kim (@kim)',
-    'Drums: <s>Lee (@lee)</s> → <b>Ray (@ray)</b>',
-    'Sub In 1: <b>Tia (@tia)</b> (new)',
-    'Other: <b>Nia (Violin) (@nia)</b> (new)',
+    'Drums: 🔄 <s>Lee (@lee)</s> → <b>Ray (@ray)</b>',
+    'Sub In 1: 🆕 <b>Tia (@tia)</b>',
+    'Other: 🆕 <b>Nia (Violin) (@nia)</b>',
     'Other: <s>Max (Sax) (@max)</s> (removed)'
   ].join('\n'));
 });

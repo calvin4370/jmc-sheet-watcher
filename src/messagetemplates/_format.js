@@ -137,6 +137,11 @@ function tplChange(beforeHtml, afterHtml) {
   return '—';
 }
 
+/** Someone filling a previously empty slot: 🆕 **Name (@handle)**. */
+function tplNewPerson(personHtml) {
+  return '🆕 ' + tplBold(personHtml);
+}
+
 /** "Label: value", with multi-line values starting on the next line. */
 function tplField(label, html) {
   return label + ':' + (html.indexOf('\n') >= 0 ? '\n' : ' ') + html;

@@ -104,6 +104,7 @@ const mine = g.notificationsFor(all, g.resolveAlerts(null));
 const raw = process.argv.includes('--raw');
 const strikeThrough = (s) => [...s].map((ch) => ch + '̶').join('');
 const show = (m) => (raw ? m : m
+  .replace(/<blockquote( expandable)?>([\s\S]*?)<\/blockquote>/g, (_, x, t) => t.split('\n').map((l) => '┃ ' + l).join('\n'))
   .replace(/<s>([\s\S]*?)<\/s>/g, (_, t) => strikeThrough(t))
   .replace(/<\/?(b|i)>/g, '')
   .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'));
