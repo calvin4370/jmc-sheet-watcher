@@ -102,6 +102,24 @@ function findHeaderRow(grid, sheetName, requiredHeaders) {
 }
 
 /** Short stable hash of a string (cyrb53), used as an ID for sent notifications. */
+/** Singapore has no daylight saving: always UTC+8. */
+var SINGAPORE_OFFSET_MS = 8 * 3600 * 1000;
+
+/** The Singapore date of a moment, as 'YYYY-MM-DD'. */
+function singaporeDay(ms) {
+  return new Date(ms + SINGAPORE_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+/** A moment in Singapore time, e.g. '12:40 am, 14 Nov'. */
+function singaporeTime(ms) {
+  var d = new Date(ms + SINGAPORE_OFFSET_MS);
+  var h = d.getUTCHours();
+  var m = d.getUTCMinutes();
+  var months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  return ((h % 12) || 12) + ':' + (m < 10 ? '0' : '') + m + (h < 12 ? ' am' : ' pm') + ', ' +
+    d.getUTCDate() + ' ' + months[d.getUTCMonth()];
+}
+
 function stableHash(text) {
   var h1 = 0xdeadbeef;
   var h2 = 0x41c6ce57;

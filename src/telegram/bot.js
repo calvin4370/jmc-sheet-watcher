@@ -8,10 +8,13 @@
  *   /stop         stop alerts (send /start to resume)
  *   /myid         show your chat ID (used once, to set TELEGRAM_OWNER_CHAT_ID)
  *   /subscribers  owner only: list subscribers with Approve / Reject / Remove buttons
+ *   /status       owner only: is the bot working? (status.js)
  *   /favourite Name (@handle), /unfavourite @handle, /favourites   (see favourites.js)
  *   /aboutme [info]  owner only: the note about them SoC LaaS gets (see aboutMe.js)
+ *   /watch one-song 3, /unwatch one-song 3, /watching   (see watch.js)
  *   /help
- * Plain messages from the owner are answered by SoC LaaS (assistant.js).
+ * Plain messages from the owner and approved subscribers are answered by SoC LaaS
+ * (assistant.js); subscribers have a daily limit.
  */
 
 /** Button labels for each alert switch in /settings. */
@@ -83,10 +86,18 @@ function helpText(ctx, chatId) {
     '/favourite Name (@handle) – get a ⭐ when their entry changes\n' +
     '/unfavourite @handle – remove a favourite\n' +
     '/favourites – see your favourites\n' +
+    '/watch one-song 3 – get every update for a band\n' +
+    '/unwatch one-song 3 – stop watching a band\n' +
+    '/watching – see the bands you watch\n' +
     '/myid – show your chat ID' +
     (isOwner(ctx, chatId)
       ? '\n/subscribers – see and manage subscribers' +
+        '\n/status – check the bot is working' +
         '\n/aboutme – what SoC LaaS knows about you (add to it: /aboutme I play bass)'
+      : '') +
+    (ctx.assistantAvailable
+      ? '\nAny other message is a question for SoC LaaS about the sheet' +
+        (isOwner(ctx, chatId) ? '.' : ' (' + SETTINGS.llm.subscriberDailyQuestions + ' a day).')
       : '');
 }
 
@@ -129,6 +140,18 @@ function handleMessage(message, ctx) {
     return;
   }
 
+  // Approved subscribers' plain messages go to SoC LaaS too, up to a daily limit.
+  if (!command && text && ctx.defer && ctx.assistantAvailable) {
+    var left = takeSubscriberQuestion(sub, ctx.now());
+    if (left < 0) {
+      botSend(ctx, chatId, 'You\'ve used your ' + SETTINGS.llm.subscriberDailyQuestions + ' SoC LaaS questions ' +
+        'for today. They reset at midnight (Singapore time).');
+      return;
+    }
+    askAssistant(ctx, chatId, text, message.from, left);
+    return;
+  }
+
   switch (command) {
     case 'settings':
       botSend(ctx, chatId, SETTINGS_TEXT, withCloseButton(settingsKeyboard(resolveAlerts(sub.alerts)), message.message_id));
@@ -143,6 +166,20 @@ function handleMessage(message, ctx) {
     case 'aboutme':
       if (isOwner(ctx, chatId)) { aboutMeCommand(ctx, chatId, text.slice(match[0].length), message.message_id); return; }
       break;
+    case 'status':
+      if (isOwner(ctx, chatId)) { botSend(ctx, chatId, statusMessage(ctx), withCloseButton(null, message.message_id)); return; }
+      break;
+    case 'watch':
+      watchCommand(ctx, sub, chatId, text.slice(match[0].length));
+      return;
+    case 'unwatch':
+      unwatchCommand(ctx, sub, chatId, text.slice(match[0].length));
+      return;
+    case 'watching': {
+      var watched = watchingMessage(sub.watching);
+      botSend(ctx, chatId, watched.text, withCloseButton(watched.replyMarkup, message.message_id));
+      return;
+    }
     case 'favourite':
     case 'favorite':
       favouriteCommand(sub, chatId, text.slice(match[0].length), ctx);
@@ -351,6 +388,21 @@ function handleCallback(cq, ctx) {
           text: updated.text,
           parse_mode: 'HTML',
           reply_markup: withCloseButton(updated.replyMarkup, closeButtonTarget(cq.message))
+        });
+      }
+    } else if (action === 'unwatch') {
+      var watcher = ctx.state.subscribers[chatId];
+      if (!watcher || watcher.status !== 'approved') answer = 'Send /start to ask for alerts.';
+      else {
+        watcher.watching = (watcher.watching || []).filter(function (w) { return w !== arg; });
+        answer = 'Removed';
+        var list = watchingMessage(watcher.watching);
+        ctx.api.call('editMessageText', {
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: list.text,
+          parse_mode: 'HTML',
+          reply_markup: withCloseButton(list.replyMarkup, closeButtonTarget(cq.message))
         });
       }
     } else if (action === 'aboutme' && arg === 'clear') {

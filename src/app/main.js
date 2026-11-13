@@ -207,7 +207,7 @@ function withState(fn) {
 }
 
 /** Stores a SoC LaaS answer in the conversation memory (takes the lock briefly). */
-function saveAssistantAnswer(questionAt, answer) {
+function saveAssistantAnswer(questionAt, answer, chatId) {
   var lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) {
     console.log('Could not store the SoC LaaS answer: the watcher was busy.');
@@ -215,7 +215,7 @@ function saveAssistantAnswer(questionAt, answer) {
   }
   try {
     var state = appsScriptLoadState();
-    rememberAssistantAnswer(state, questionAt, answer);
+    rememberAssistantAnswer(state, questionAt, answer, chatId);
     appsScriptSaveState(state);
   } finally {
     lock.releaseLock();
@@ -258,7 +258,7 @@ function appsScriptContext(state) {
   }
   var sleep = function (ms) { Utilities.sleep(ms); };
   var log = function (message) { console.log(message); };
-  var chat = createLlmChat({ config: appsScriptLlmConfig(), http: appsScriptHttp, sleep: sleep });
+  var chat = createLlmChat({ config: appsScriptLlmConfig(), http: appsScriptCountedLlmHttp, sleep: sleep });
   return {
     state: state,
     api: createTelegramApi({ token: token, http: appsScriptHttp, sleep: sleep }),
@@ -267,11 +267,12 @@ function appsScriptContext(state) {
       return readSheetsViaApi(spreadsheetIdFromUrl(props.getProperty('WATCHED_SPREADSHEET_URL')),
         appsScriptHttp, ScriptApp.getOAuthToken());
     },
-    rewrite: createLlmRewriter({ config: appsScriptLlmConfig(), http: appsScriptHttp, sleep: sleep, log: log }),
+    rewrite: createLlmRewriter({ config: appsScriptLlmConfig(), http: appsScriptCountedLlmHttp, sleep: sleep, log: log }),
     chat: chat,
     assistantAvailable: !!chat,
     saveAnswer: saveAssistantAnswer,
     updateState: updateStoredState,
+    llmRequestsToday: appsScriptLlmRequestsToday,
     now: function () { return Date.now(); },
     sleep: sleep,
     log: log

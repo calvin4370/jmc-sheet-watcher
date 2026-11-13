@@ -182,9 +182,11 @@ function runSheetCheck(ctx) {
     var alerts = resolveAlerts(sub.alerts);
     notifications.forEach(function (n) {
       if (sub.status !== 'approved') return;
-      // Favourites override the subscriber's switches (see notify/favourites.js).
+      // Favourites and watched bands override the subscriber's switches
+      // (see notify/favourites.js and notify/watch.js).
       var favourites = favouritesInChange(n.change, sub.favourites);
-      if (!favourites.length && !wantsChange(n.change, alerts)) return;
+      var watched = changeIsWatched(n.change, sub.watching);
+      if (!favourites.length && !watched && !wantsChange(n.change, alerts)) return;
 
       var updateMessageId = null;
       if (sub.sent.indexOf(n.id) < 0) {
@@ -198,6 +200,10 @@ function runSheetCheck(ctx) {
       if (favourites.length && sub.sent.indexOf(n.id + ':star') < 0) {
         var star = deliverOnce(ctx, sub, n.id + ':star', favouriteNotice(favourites), 'HTML', updateMessageId);
         if (star.status === 'retry') retryLater = true;
+      }
+      if (watched && sub.status === 'approved' && sub.sent.indexOf(n.id + ':watch') < 0) {
+        var eyes = deliverOnce(ctx, sub, n.id + ':watch', watchNotice(n.change), 'HTML', updateMessageId);
+        if (eyes.status === 'retry') retryLater = true;
       }
     });
     if (sub.sent.length > MAX_SENT_IDS) sub.sent = sub.sent.slice(-MAX_SENT_IDS);

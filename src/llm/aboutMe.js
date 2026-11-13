@@ -85,27 +85,7 @@ function aboutMeCommand(ctx, chatId, info, commandMessageId) {
  * SoC LaaS rewrites the note; it's checked, saved, and the owner is told the result.
  */
 function updateAboutMe(later, job) {
-  var result = null;
-  try {
-    var message = later.chat(aboutMePrompt(job.note, job.info), null, null);
-    var text = String(typeof message === 'string' ? message : (message && message.content) || '').trim();
-    var problem = aboutMeProblem(text, job.note, job.info);
-    if (problem === 'too long') result = { saved: false, note: text, previous: job.note, written: 'llm' };
-    else if (!problem) result = { saved: true, note: text, written: 'llm' };
-    else later.log('SoC LaaS note rewrite rejected (' + problem + '); adding the info as written.');
-  } catch (e) {
-    later.log('SoC LaaS note rewrite failed: ' + e.message);
-  }
-  if (!result) result = aboutMeAppend(job.note, job.info);
-
-  if (result.saved) {
-    try {
-      later.updateState(function (state) { state.memory.aboutMe = result.note; });
-    } catch (e) {
-      later.log('Could not save the note: ' + e.message);
-      result = { saved: false, error: true, previous: job.note };
-    }
-  }
+  var result = rewriteAndSaveAboutMe(later, job.note, job.info);
   try {
     botSend(later, job.chatId, aboutMeReply(result));
   } catch (e) {
@@ -118,6 +98,58 @@ function updateAboutMe(later, job) {
       later.log('Could not delete "Updating your note…": ' + e.message);
     }
   }
+}
+
+/**
+ * Rewrites the note to include `info` (SoC LaaS, or the fallback) and saves it.
+ * Returns { saved, note, previous, written: 'llm' | 'append', error? }.
+ */
+function rewriteAndSaveAboutMe(later, note, info) {
+  var result = null;
+  try {
+    var message = later.chat(aboutMePrompt(note, info), null, null);
+    var text = String(typeof message === 'string' ? message : (message && message.content) || '').trim();
+    var problem = aboutMeProblem(text, note, info);
+    if (problem === 'too long') result = { saved: false, note: text, previous: note, written: 'llm' };
+    else if (!problem) result = { saved: true, note: text, previous: note, written: 'llm' };
+    else later.log('SoC LaaS note rewrite rejected (' + problem + '); adding the info as written.');
+  } catch (e) {
+    later.log('SoC LaaS note rewrite failed: ' + e.message);
+  }
+  if (!result) result = aboutMeAppend(note, info);
+
+  if (result.saved) {
+    try {
+      later.updateState(function (state) { state.memory.aboutMe = result.note; });
+    } catch (e) {
+      later.log('Could not save the note: ' + e.message);
+      result = { saved: false, error: true, note: note, previous: note };
+    }
+  }
+  return result;
+}
+
+/**
+ * The update_about_me tool: SoC LaaS saves something the owner told it about themselves
+ * (owner decision: it decides when). The call is shown to the owner like any tool call.
+ * job.aboutMe is kept up to date, so several calls in one conversation build on each other.
+ */
+function aboutMeTool(later, job, args) {
+  var info = String((args && args.info) || '').trim();
+  if (!info) return { error: 'info is empty.' };
+  if (!later.updateState) return { error: 'The note can\'t be saved right now.' };
+  var result = rewriteAndSaveAboutMe(later, job.aboutMe || '', info);
+  if (result.error) return { saved: false, error: 'The note couldn\'t be saved right now.' };
+  if (result.saved) job.aboutMe = result.note;
+  return {
+    saved: result.saved,
+    note: job.aboutMe || '',
+    size: aboutMeSize(result.saved ? result.note : job.aboutMe),
+    limit: ABOUT_ME_LIMIT,
+    max: aboutMeMax(),
+    problem: result.saved ? (aboutMeSize(result.note) > ABOUT_ME_LIMIT ? 'over the limit: tell the owner' : '')
+      : 'not saved: the note would be ' + aboutMeSize(result.note) + ' characters. Tell the owner.'
+  };
 }
 
 /** Fallback: the info added to the end of the note, as written. */

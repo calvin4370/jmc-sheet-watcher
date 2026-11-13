@@ -34,12 +34,18 @@ function normaliseState(state) {
 }
 
 /**
- * Subscriber: { chatId, name, status, alerts, sent, since }
+ * Subscriber: { chatId, name, status, alerts, favourites, watching, questions, questionsToday, sent, since }
+ * favourites: @handles (favourites.js); watching: band IDs like 'one-song#3' (watch.js)
+ * questions: their last 5 SoC LaaS questions with answers (assistant.js; the owner's are in memory)
+ * questionsToday: { day: 'YYYY-MM-DD', count } for the daily SoC LaaS limit
  * status: 'pending' | 'approved' | 'rejected' | 'stopped' | 'removed'
  * alerts: the subscriber's own switches (missing ones use SETTINGS.defaultAlerts)
  */
 function newSubscriber(chatId, name, status, now) {
-  return { chatId: String(chatId), name: name, status: status, alerts: {}, favourites: [], sent: [], since: now };
+  return {
+    chatId: String(chatId), name: name, status: status, alerts: {}, favourites: [], watching: [],
+    questions: [], questionsToday: { day: '', count: 0 }, sent: [], since: now
+  };
 }
 
 function approvedSubscribers(state) {

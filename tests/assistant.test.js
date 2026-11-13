@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const g = require('./helpers/load');
 const { workbook } = require('./helpers/grids');
-const { fakeCtx, msg } = require('./helpers/fakes');
+const { fakeCtx, msg, tap } = require('./helpers/fakes');
 
 const OWNER = '100';
 const sheet = () => workbook({
@@ -42,7 +42,7 @@ function setup({ replies, readSheets } = {}) {
     return queue && queue.length ? queue.shift() : 'Kim is the POC.';
   };
   if (readSheets) ctx.readSheets = readSheets;
-  ctx.saveAnswer = (at, answer) => g.rememberAssistantAnswer(ctx.state, at, answer);
+  ctx.saveAnswer = (at, answer, chatId) => g.rememberAssistantAnswer(ctx.state, at, answer, chatId);
   const runDeferred = () => { ctx.deferred.splice(0).forEach((t) => t(ctx)); };
   return { ctx, calls, runDeferred };
 }
@@ -66,9 +66,9 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
   assert.match(opening[0].content, /Use the tools to look up what you need/);
   assert.match(opening[0].content, /Never reply with just "I don't know"/);
   assert.match(opening[0].content, /The owner is User100 on Telegram\. "Me" or "I" means them/);
-  assert.doesNotMatch(opening[0].content, /aboutme note/, 'no note yet');
+  assert.match(opening[0].content, /their \/aboutme note\):\n\(empty\)$/, 'no note yet');
   assert.deepEqual(calls[0].tools.map((t) => t.function.name),
-    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person']);
+    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person', 'update_about_me']);
   assert.equal(calls[0].toolChoice, 'auto');
 
   // The tool result went back to SoC LaaS.
@@ -213,14 +213,105 @@ test('if SoC LaaS fails, a short apology is sent and "Thinking…" is still dele
   assert.equal(ctx.api.calls.at(-1).method, 'deleteMessage');
 });
 
-test('only the owner can ask; others get the usual reply and nothing goes to SoC LaaS', () => {
+test('people who are not approved subscribers can\'t ask; nothing goes to SoC LaaS', () => {
   const { ctx, calls, runDeferred } = setup();
-  g.handleUpdate(msg(7, '/start'), ctx);
-  ctx.state.subscribers['7'].status = 'approved';
+  g.handleUpdate(msg(OWNER, '/start'), ctx);
+  g.handleUpdate(msg(7, '/start'), ctx); // pending
   g.handleUpdate(msg(7, 'who is in band 1?'), ctx);
+  g.handleUpdate(msg(9, 'who is in band 1?'), ctx); // never subscribed
   runDeferred();
   assert.equal(calls.length, 0);
-  assert.match(ctx.api.sent(7).at(-1).params.text, /^<b>\[Help\]<\/b>/);
+  assert.match(ctx.api.sent(7).at(-1).params.text, /waiting for the owner's approval/);
+  assert.match(ctx.api.sent(9).at(-1).params.text, /Send \/start/);
+});
+
+test('subscribers can ask: their own name and memory, no owner extras, and questions left', () => {
+  const { ctx, calls, runDeferred } = setup({ replies: () => 'Lee is in band 1.' });
+  g.handleUpdate(msg(OWNER, '/start'), ctx);
+  g.handleUpdate(msg(7, '/start', { first_name: 'Amy', username: 'amy_x' }), ctx);
+  g.handleUpdate(tap(OWNER, 'approve:7'), ctx);
+  ctx.state.memory.aboutMe = 'Owner plays bass.';
+  ctx.state.memory.alerts = [{ text: 'an alert', at: 1 }];
+  ctx.state.memory.ownerMessages = [{ text: 'owner question', at: 1, answer: 'owner answer' }];
+
+  g.handleUpdate(msg(7, 'am I in band 1?', { first_name: 'Amy', username: 'amy_x' }), ctx);
+  runDeferred();
+  const system = calls[0].messages[0].content;
+  assert.match(system, /^You answer questions from a subscriber of/);
+  assert.match(system, /The person asking is Amy \(@amy_x\) on Telegram\. "Me" or "I" means them/);
+  assert.doesNotMatch(system, /Owner plays bass|an alert|aboutme|update_about_me/);
+  assert.deepEqual(calls[0].messages.slice(1).map((m) => m.content), ['am I in band 1?'], 'not the owner\'s conversation');
+  assert.ok(!calls[0].tools.some((t) => t.function.name === 'update_about_me'));
+  assert.equal(ctx.api.sent(7).at(-1).params.text,
+    '<b>[SoC LaaS Response]</b>\nLee is in band 1.\n\n<i>19 of 20 questions left today.</i>');
+
+  // Their own conversation is remembered for follow-ups.
+  g.handleUpdate(msg(7, 'and band 2?'), ctx);
+  runDeferred();
+  assert.deepEqual(calls[1].messages.slice(1).map((m) => m.content), ['am I in band 1?', 'Lee is in band 1.', 'and band 2?']);
+  assert.equal(ctx.state.memory.ownerMessages.length, 1, 'the owner\'s memory is untouched');
+});
+
+test('subscribers get 20 questions a day, reset at midnight Singapore time; the owner has no limit', () => {
+  const { ctx, calls, runDeferred } = setup({ replies: () => 'ok' });
+  g.handleUpdate(msg(OWNER, '/start'), ctx);
+  g.handleUpdate(msg(7, '/start'), ctx);
+  g.handleUpdate(tap(OWNER, 'approve:7'), ctx);
+  ctx.time = Date.UTC(2026, 10, 14, 15, 0); // 11 pm in Singapore
+  for (let i = 0; i < 21; i++) g.handleUpdate(msg(7, 'q' + i), ctx);
+  runDeferred();
+  assert.equal(calls.length, 20);
+  const fanTexts = ctx.api.sent(7).map((c) => c.params.text);
+  assert.equal(fanTexts.filter((t) => t === 'You\'ve used your 20 SoC LaaS questions for today. ' +
+    'They reset at midnight (Singapore time).').length, 1);
+  assert.match(fanTexts.at(-1), /0 of 20 questions left today/);
+
+  ctx.time = Date.UTC(2026, 10, 14, 16, 1); // 12:01 am the next day in Singapore
+  g.handleUpdate(msg(7, 'new day'), ctx);
+  runDeferred();
+  assert.equal(calls.length, 21);
+  assert.match(ctx.api.sent(7).at(-1).params.text, /19 of 20 questions left today/);
+
+  for (let i = 0; i < 25; i++) g.handleUpdate(msg(OWNER, 'owner q' + i), ctx);
+  runDeferred();
+  assert.equal(calls.length, 46);
+  assert.doesNotMatch(ctx.api.sent(OWNER).at(-1).params.text, /questions left/);
+});
+
+test('SoC LaaS can update the owner\'s /aboutme note itself; the call is shown', () => {
+  const { ctx, calls, runDeferred } = setup({
+    replies: [
+      { role: 'assistant', content: null, tool_calls: [toolCall('t1', 'update_about_me', { info: 'Plays drums' })] },
+      'Plays bass.\nPlays drums.', // the note rewrite
+      'Noted that you play drums. You are not in band 1.'
+    ]
+  });
+  ctx.updateState = (fn) => fn(ctx.state);
+  g.handleUpdate(msg(OWNER, '/start'), ctx);
+  ctx.state.memory.aboutMe = 'Plays bass.';
+  g.handleUpdate(msg(OWNER, 'I play drums btw. am I in band 1?'), ctx);
+  runDeferred();
+  assert.equal(ctx.state.memory.aboutMe, 'Plays bass.\nPlays drums.');
+  assert.ok(ctx.api.sent(OWNER).some((c) => c.params.text === '<i>Called tool: update_about_me (info: Plays drums)</i>'));
+  const toolResult = JSON.parse(calls[2].messages.at(-1).content);
+  assert.deepEqual(toolResult, { saved: true, note: 'Plays bass.\nPlays drums.', size: 24, limit: 500, max: 600, problem: '' });
+  assert.match(calls[1].messages[1].content, /^Current note:\nPlays bass\.\n\nNew information:\nPlays drums$/);
+});
+
+test('a subscriber calling update_about_me changes nothing', () => {
+  const { ctx, runDeferred } = setup({
+    replies: [
+      { role: 'assistant', content: null, tool_calls: [toolCall('t1', 'update_about_me', { info: 'x' })] },
+      'done'
+    ]
+  });
+  ctx.updateState = (fn) => fn(ctx.state);
+  g.handleUpdate(msg(OWNER, '/start'), ctx);
+  g.handleUpdate(msg(7, '/start'), ctx);
+  g.handleUpdate(tap(OWNER, 'approve:7'), ctx);
+  g.handleUpdate(msg(7, 'remember me'), ctx);
+  runDeferred();
+  assert.equal(ctx.state.memory.aboutMe || '', '');
 });
 
 test('without SoC LaaS configured, the owner gets the normal reply', () => {

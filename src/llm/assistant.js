@@ -1,17 +1,21 @@
 /*
- * Ask SoC LaaS: the owner's plain messages are answered by the LLM using the sheet.
+ * Ask SoC LaaS: plain (non-command) messages are answered by the LLM using the sheet.
  *
  * Owner decisions:
- *  - Only the owner can use it. Everyone else gets the help message.
+ *  - The owner and approved subscribers can use it. Subscribers get
+ *    SETTINGS.llm.subscriberDailyQuestions questions a day (reset at midnight Singapore
+ *    time); the owner has no limit.
  *  - The sheet is read live once per question. SoC LaaS does NOT get the whole sheet:
  *    it calls tools (below) to fetch only what it needs, e.g. one band or Player Finder.
  *    Only tool results are sent to it.
  *  - Each tool call is shown to the owner as "Called tool: …" after "Thinking…".
  *    "Thinking…" is deleted when the answer is sent; the tool-call messages stay.
  *  - The LLM must answer only from the sheet data, and say when it doesn't know.
- *  - It also gets the owner's last 5 messages with SoC LaaS's answers (the conversation
- *    so far), the last 5 alerts sent to the owner, the owner's Telegram name and @handle
- *    (so "me" questions work), and their /aboutme note (aboutMe.js).
+ *  - It also gets the person's last 5 questions with SoC LaaS's answers (the conversation
+ *    so far) and their Telegram name and @handle (so "me" questions work).
+ *  - The owner's questions also get the last 5 alerts sent to the owner and their
+ *    /aboutme note, and SoC LaaS can update that note itself (update_about_me tool,
+ *    aboutMe.js) when the owner tells it something lasting about themselves.
  *  - Reply: plain text under a bold [SoC LaaS Response] header.
  *
  * The LLM calls run after the lock is released (ctx.defer), so they never hold up
@@ -99,6 +103,22 @@ function songTitles(b) {
     return [s.title.primary, s.title.alternate].filter(function (t) { return !isBlank(t); }).join(' / ');
   }).filter(function (t) { return t; });
 }
+
+/** Owner only: SoC LaaS saves something to the owner's /aboutme note (aboutMe.js). */
+var UPDATE_ABOUT_ME_TOOL = {
+  type: 'function',
+  function: {
+    name: 'update_about_me',
+    description: 'Save something lasting the owner told you about themselves (e.g. instruments they play, ' +
+      'their bands, their name or @handle in the sheet, preferences) to their /aboutme note. The note is ' +
+      'rewritten to fit it in; newer information wins, so this can also correct or remove things.',
+    parameters: {
+      type: 'object',
+      properties: { info: { type: 'string', description: 'The new information, in a short sentence' } },
+      required: ['info']
+    }
+  }
+};
 
 /** Runs one tool against the sheet copy. Returns a JSON-serialisable result. */
 function runAssistantTool(snapshot, name, args) {
@@ -200,15 +220,47 @@ function describeToolCall(name, args) {
 
 /* ---------------- Asking and answering ---------------- */
 
-/** Called by the bot (under the lock): remember the question, show "Thinking…", defer the work. */
-function askAssistant(ctx, chatId, question, from) {
+/**
+ * A subscriber's daily SoC LaaS limit. Counts this question and returns how many are
+ * left today, or -1 (and counts nothing) if they've used them all.
+ */
+function takeSubscriberQuestion(sub, now) {
+  var today = singaporeDay(now);
+  if (!sub.questionsToday || sub.questionsToday.day !== today) sub.questionsToday = { day: today, count: 0 };
+  var limit = SETTINGS.llm.subscriberDailyQuestions;
+  if (sub.questionsToday.count >= limit) return -1;
+  sub.questionsToday.count++;
+  return limit - sub.questionsToday.count;
+}
+
+/** The person's stored questions: the owner's in state.memory, a subscriber's on their record. */
+function questionHistory(state, chatId, owner) {
+  if (owner) return state.memory.ownerMessages;
+  var sub = state.subscribers[String(chatId)];
+  if (!sub) return [];
+  if (!sub.questions) sub.questions = [];
+  return sub.questions;
+}
+
+function setQuestionHistory(state, chatId, owner, list) {
+  if (owner) state.memory.ownerMessages = list;
+  else if (state.subscribers[String(chatId)]) state.subscribers[String(chatId)].questions = list;
+}
+
+/**
+ * Called by the bot (under the lock): remember the question, show "Thinking…", defer the work.
+ * questionsLeft: for subscribers, how many questions they have left today (shown with the answer).
+ */
+function askAssistant(ctx, chatId, question, from, questionsLeft) {
   var memory = ctx.state.memory;
-  var previousQuestions = memory.ownerMessages.slice();
-  var recentAlerts = memory.alerts.slice();
+  var owner = isOwner(ctx, chatId);
+  var history = questionHistory(ctx.state, chatId, owner);
+  var previousQuestions = history.slice();
+  var recentAlerts = owner ? memory.alerts.slice() : [];
   var questionAt = ctx.now();
-  memory.ownerMessages = memory.ownerMessages
+  setQuestionHistory(ctx.state, chatId, owner, history
     .concat([{ text: question.slice(0, 1000), at: questionAt }])
-    .slice(-ASSISTANT_MEMORY_SIZE);
+    .slice(-ASSISTANT_MEMORY_SIZE));
 
   var thinking = null;
   try {
@@ -220,12 +272,14 @@ function askAssistant(ctx, chatId, question, from) {
   ctx.defer(function (later) {
     answerOwnerQuestion(later, {
       chatId: chatId,
+      isOwner: owner,
+      questionsLeft: owner ? null : questionsLeft,
       question: question,
       questionAt: questionAt,
       previousQuestions: previousQuestions,
       recentAlerts: recentAlerts,
-      owner: from ? telegramUserLabel(from) : '',
-      aboutMe: memory.aboutMe || '',
+      person: from ? telegramUserLabel(from) : '',
+      aboutMe: owner ? memory.aboutMe || '' : '',
       storedSnapshot: storedSnapshot,
       thinkingMessageId: thinking && thinking.message_id
     });
@@ -256,9 +310,13 @@ function answerOwnerQuestion(later, job) {
     } else {
       var answer = cleanAssistantAnswer(runAssistantConversation(later, job, snapshot));
       reply = ASSISTANT_HEADER + '\n' + tplEscape(note + answer);
+      if (job.questionsLeft !== null && job.questionsLeft !== undefined) {
+        reply += '\n\n<i>' + job.questionsLeft + ' of ' + SETTINGS.llm.subscriberDailyQuestions +
+          ' questions left today.</i>';
+      }
       if (later.saveAnswer) {
         try {
-          later.saveAnswer(job.questionAt, answer);
+          later.saveAnswer(job.questionAt, answer, job.chatId);
         } catch (e) {
           later.log('Could not store the SoC LaaS answer: ' + e.message);
         }
@@ -293,7 +351,8 @@ function runAssistantConversation(later, job, snapshot) {
   var rounds = SETTINGS.llm.maxToolRounds;
   for (var round = 1; ; round++) {
     var last = round >= rounds;
-    var message = later.chat(messages, ASSISTANT_TOOLS, last ? 'none' : 'auto');
+    var tools = job.isOwner ? ASSISTANT_TOOLS.concat([UPDATE_ABOUT_ME_TOOL]) : ASSISTANT_TOOLS;
+    var message = later.chat(messages, tools, last ? 'none' : 'auto');
     if (typeof message === 'string') return message;
     var calls = message.tool_calls || [];
     if (!calls.length || last) return message.content || '';
@@ -308,7 +367,10 @@ function runAssistantConversation(later, job, snapshot) {
       } catch (e) {
         later.log('Could not show a tool call: ' + e.message);
       }
-      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(runAssistantTool(snapshot, name, args)) });
+      var result = name === 'update_about_me' && job.isOwner
+        ? aboutMeTool(later, job, args)
+        : runAssistantTool(snapshot, name, args);
+      messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     });
   }
 }
@@ -321,7 +383,8 @@ function cleanAssistantAnswer(text) {
 /** The opening chat messages sent to SoC LaaS (no sheet data: that comes from tools). */
 function assistantMessages(job, now) {
   var system = [
-    'You answer questions from the owner of a Telegram bot that watches the JMM band signup sheet',
+    'You answer questions from ' + (job.isOwner ? 'the owner' : 'a subscriber') +
+      ' of a Telegram bot that watches the JMM band signup sheet',
     '(a university music club\'s concert signups). The time now is ' + new Date(now).toISOString() + '.',
     'Use the tools to look up what you need in the sheet. Answer ONLY from tool results and the',
     'conversation. Never guess or make anything up.',
@@ -337,21 +400,29 @@ function assistantMessages(job, now) {
     'instruments, and other columns such as Description and YouTube Link. Player Finder lists people',
     'looking for a band.'
   ];
-  if (job.owner) {
-    system.push('', 'The owner is ' + job.owner + ' on Telegram. "Me" or "I" means them: look them up',
+  var who = job.isOwner ? 'the owner' : 'the person asking';
+  if (job.person) {
+    system.push('', (job.isOwner ? 'The owner' : 'The person asking') + ' is ' + job.person +
+      ' on Telegram. "Me" or "I" means them: look them up',
       'with find_person by @handle, then by name. Their sheet entries may use a different name.');
   } else {
-    system.push('', 'You don\'t know who the owner is, so if they ask about "me" or "I", ask for their',
+    system.push('', 'You don\'t know who ' + who + ' is, so if they ask about "me" or "I", ask for their',
       'name or @handle.');
   }
-  if (job.aboutMe) {
-    system.push('', 'What the owner has told you about themselves (their /aboutme note):', job.aboutMe);
+  if (job.isOwner) {
+    system.push('', 'When the owner tells you something lasting about themselves (e.g. instruments they play,',
+      'their bands, their name or @handle in the sheet, preferences), save it with update_about_me.',
+      'Don\'t save questions, guesses, or things about other people unless the owner asks you to.',
+      'If the owner asks you to remember something, always call update_about_me.',
+      'Never say you saved, noted or will remember something unless update_about_me returned',
+      'saved: true in this conversation. When you save something, say so briefly in your answer.');
+    system.push('', 'What the owner has told you about themselves (their /aboutme note):', job.aboutMe || '(empty)');
   }
   if (job.recentAlerts.length) {
     system.push('', 'The last alert messages the bot sent the owner (oldest first):');
     job.recentAlerts.forEach(function (a, i) { system.push((i + 1) + '. ' + a.text); });
   }
-  // The conversation so far: the owner's last messages and SoC LaaS's answers.
+  // The conversation so far: the person's last messages and SoC LaaS's answers.
   var messages = [{ role: 'system', content: system.join('\n') }];
   job.previousQuestions.forEach(function (m) {
     messages.push({ role: 'user', content: m.text });
@@ -362,9 +433,13 @@ function assistantMessages(job, now) {
 }
 
 /** Stores SoC LaaS's answer next to the question it answered (kept with the last 5). */
-function rememberAssistantAnswer(state, questionAt, answer) {
-  state.memory.ownerMessages.forEach(function (m) {
-    if (m.at === questionAt) m.answer = String(answer).slice(0, 1500);
+function rememberAssistantAnswer(state, questionAt, answer, chatId) {
+  var sub = chatId !== undefined ? state.subscribers[String(chatId)] : null;
+  var lists = [state.memory.ownerMessages, (sub && sub.questions) || []];
+  lists.forEach(function (list) {
+    list.forEach(function (m) {
+      if (m.at === questionAt) m.answer = String(answer).slice(0, 1500);
+    });
   });
 }
 
