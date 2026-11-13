@@ -70,7 +70,7 @@ function buildNotifications(bandChanges, playerChanges, rewrite) {
     var parseMode = 'HTML';
     if (text.length > TELEGRAM_MAX_LENGTH) {
       // Too long for one Telegram message: send as plain text, cut short.
-      text = text.replace(/<\/?[bis]>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      text = llmUnescape(text);
       text = text.slice(0, TELEGRAM_MAX_LENGTH - 1) + '…';
       parseMode = null;
     }

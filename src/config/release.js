@@ -6,13 +6,13 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-13-player-finder-names',
+  id: '2026-11-13-expandable-boxes',
   notes: [
-    'Player Finder messages now show the name and Telegram handle together on one line, ' +
-      'e.g. "Name: Oli (@oli)", in New Player, Update and Removed messages. Both are still shown ' +
-      'exactly as written in the sheet.',
-    'If someone changes their name or handle, that line shows the old version struck out and ' +
-      'the new one in bold.',
-    'New: whenever the bot is updated, it tells you here what changed.'
+    'Long text now sits in expandable boxes that show the first few lines with a "show more" toggle: ' +
+      'Instruments, Intro and Note to POC in Player Finder messages, the band Description, and the ' +
+      'changed values in [Other Change] messages.',
+    'Band messages now show the full Description (no longer cut at 100 characters). It stays compact ' +
+      'because the box is collapsed until you tap it.',
+    'When boxed text changes, the box shows the old text struck out, an arrow, then the new text in bold.'
   ]
 };

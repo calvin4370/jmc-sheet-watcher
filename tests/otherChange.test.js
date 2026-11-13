@@ -47,8 +47,12 @@ test('without the LLM, the plain Other Change message lists the cells exactly', 
     '<b>[Other Change]</b>',
     '- One-song band #2 · 夜の歌 / Night Song',
     '',
-    'Description / Points to Take Note: <s>looking for vox</s> → <b>found vox! still need keys &amp; bass</b>',
-    'Youtube Link (2nd row): <b>https://youtu.be/abc</b> (new)'
+    'Description / Points to Take Note:',
+    '<blockquote expandable><s>looking for vox</s>',
+    '→',
+    '<b>found vox! still need keys &amp; bass</b></blockquote>',
+    'Youtube Link (2nd row):',
+    '<blockquote expandable><b>https://youtu.be/abc</b> (new)</blockquote>'
   ].join('\n'));
   assert.equal(n.llmWritten, false);
 });
@@ -104,4 +108,17 @@ test('subscribers can switch Other Change messages off', () => {
   const [c] = descriptionEdit();
   assert.equal(g.wantsChange(c, g.resolveAlerts(null)), true);
   assert.equal(g.wantsChange(c, g.resolveAlerts({ otherChanges: false })), false);
+});
+
+test('LLM messages may use expandable boxes, but no other new markup', () => {
+  assert.equal(g.llmMarkupProblem('<blockquote expandable><s>a</s>\n→\n<b>b</b></blockquote>'), '');
+  assert.equal(g.llmMarkupProblem('<blockquote>a</blockquote>'), '');
+  assert.notEqual(g.llmMarkupProblem('<blockquote expandable>a'), '');
+  assert.notEqual(g.llmMarkupProblem('<b expandable>a</b>'), '');
+  assert.notEqual(g.llmMarkupProblem('<blockquote>a</blockquote expandable>'), '');
+  assert.notEqual(g.llmMarkupProblem('<pre>a</pre>'), '');
+
+  const [change] = descriptionEdit();
+  const fallback = g.MESSAGE_TEMPLATES.other_change.render(change);
+  assert.equal(g.validateOtherChange(fallback, fallback, change).ok, true, 'the boxed plain message passes its own checks');
 });

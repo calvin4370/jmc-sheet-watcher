@@ -6,7 +6,8 @@
  *
  * Song: 夜バンド / Night Band — 夜の歌 / Night Song
  * POC: Name (@handle)
- * Description: (description text, cut to 100 chars then ...)
+ * Description:
+ * ┃ (full description text, in an expandable box)
  * Complete: No
  *
  * Lead Guitar: Name (@handle)

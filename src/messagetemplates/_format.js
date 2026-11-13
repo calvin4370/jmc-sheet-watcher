@@ -88,24 +88,40 @@ function tplSong(song) {
   return (artist ? artist + ' — ' : '') + (title || '(untitled)');
 }
 
-/** Band descriptions are cut to this many characters, followed by "...". */
-var DESCRIPTION_MAX_CHARS = 100;
-
 /**
- * The band's Description cell (first row), on one line and cut to
- * DESCRIPTION_MAX_CHARS characters + "...". '' if there is none.
+ * The band's Description cell (first row), in full and exactly as written
+ * (HTML-escaped). '' if there is none.
  */
 function tplBandDescription(band) {
   var block = band.block;
   if (!block) return '';
   for (var c = 0; c < block.header.length; c++) {
     if (normaliseHeader(block.header[c]).indexOf('description') === 0) {
-      var text = tplClean(block.rows[0][c]).replace(/\s*\n\s*/g, ' / ');
-      if (text.length > DESCRIPTION_MAX_CHARS) text = text.slice(0, DESCRIPTION_MAX_CHARS) + '...';
-      return tplEscape(text);
+      return isBlank(block.rows[0][c]) ? '' : tplExact(block.rows[0][c]);
     }
   }
   return '';
+}
+
+/*
+ * Boxes: long free text (Instruments, Intro, Note to POC, Description, [Other Change]
+ * values) goes in a Telegram expandable quote: it shows the first few lines with a
+ * "show more" toggle.
+ */
+var BOX_OPEN = '<blockquote expandable>';
+var BOX_CLOSE = '</blockquote>';
+
+/** "Label:" then the text in an expandable box. */
+function tplBoxField(label, html) {
+  return label + ':\n' + BOX_OPEN + html + BOX_CLOSE;
+}
+
+/** A change inside a box: ~~old~~, →, **new** on separate lines (or (new) / (removed)). */
+function tplBoxChange(beforeHtml, afterHtml) {
+  if (beforeHtml && afterHtml) return tplStrike(beforeHtml) + '\n→\n' + tplBold(afterHtml);
+  if (afterHtml) return tplBold(afterHtml) + ' (new)';
+  if (beforeHtml) return tplStrike(beforeHtml) + ' (removed)';
+  return '—';
 }
 
 /** "Song" for one-song bands, "Song 1"/"Song 2" for two-song bands. */
@@ -187,13 +203,13 @@ function tplPlayerFields(before, after) {
     var newValue = after ? after[f[0]] : '';
     var shown;
     if (before && after && !sameText(oldValue, newValue)) {
-      shown = tplChange(isBlank(oldValue) ? '' : tplExact(oldValue), isBlank(newValue) ? '' : tplExact(newValue));
+      shown = tplBoxChange(isBlank(oldValue) ? '' : tplExact(oldValue), isBlank(newValue) ? '' : tplExact(newValue));
     } else {
       var value = after ? newValue : oldValue;
       if (isBlank(value)) return;
       shown = tplExact(value);
     }
-    lines.push(tplField(f[1], shown));
+    lines.push(tplBoxField(f[1], shown));
   });
   return lines.join('\n');
 }
@@ -218,7 +234,7 @@ function tplBandDetails(band) {
   });
   lines.push(band.pointOfContact ? tplSlotLine('POC', tplPerson(band.pointOfContact), band.pointOfContact) : 'POC: —');
   var description = tplBandDescription(band);
-  if (description) lines.push('Description: ' + description);
+  if (description) lines.push(tplBoxField('Description', description));
   lines.push('Complete: ' + (tplInline(band.completion) || '—'));
   return lines.join('\n');
 }

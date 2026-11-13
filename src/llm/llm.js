@@ -20,7 +20,7 @@
  *    character, in the same order (header, songs, POC, Complete, clear members…);
  *  - new lines only use words and @handles that appear in the band's cells;
  *  - every @handle from the unclear cells is still mentioned;
- *  - only <b>, <i>, <s> tags, properly closed.
+ *  - only <b>, <i>, <s>, <blockquote expandable> tags, properly closed.
  * If anything fails, the template's message is sent instead (without the footer).
  */
 
@@ -51,7 +51,7 @@ function llmRewritePrompt(change, templateText, unclear) {
     '   what they play, based on the cells. Example: "Lead Vocals: Name (@handle) — vox (song 2)".',
     '3. Copy names, @handles and instrument words exactly as they appear in the cells. Never invent',
     '   or change people, handles, songs, bands, numbers or changes.',
-    '4. Use only these HTML tags: <b>, <i>, <s>. Write & < > in text as &amp; &lt; &gt;.',
+    '4. Use only these HTML tags: <b>, <i>, <s>, <blockquote expandable>. Write & < > in text as &amp; &lt; &gt;.',
     '5. Output only the message: no explanations, no code fences, no sign-off.'
   ].join('\n');
 
@@ -69,7 +69,7 @@ function llmRewritePrompt(change, templateText, unclear) {
 }
 
 function llmUnescape(text) {
-  return text.replace(/<\/?[bis]>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  return text.replace(/<\/?(b|i|s|blockquote)( expandable)?>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 }
 
 function llmWords(text) {
@@ -85,14 +85,14 @@ function llmCleanOutput(output) {
   return text.split('\n').filter(function (line) { return line.trim() !== footer; }).join('\n').trim();
 }
 
-/** '' if the HTML only uses <b>, <i>, <s>, properly nested, with & only as an entity. */
+/** '' if the HTML only uses <b>, <i>, <s>, <blockquote [expandable]>, properly nested, & only as an entity. */
 function llmMarkupProblem(text) {
   var stack = [];
   var tagRe = /<[^>]*>|<|&(?!amp;|lt;|gt;)/g;
   var m;
   while ((m = tagRe.exec(text)) !== null) {
-    var tag = m[0].match(/^<(\/?)([bis])>$/);
-    if (!tag) return 'disallowed markup or unescaped character';
+    var tag = m[0].match(/^<(\/?)(b|i|s|blockquote)( expandable)?>$/);
+    if (!tag || (tag[3] && (tag[1] || tag[2] !== 'blockquote'))) return 'disallowed markup or unescaped character';
     if (!tag[1]) stack.push(tag[2]);
     else if (stack.pop() !== tag[2]) return 'unbalanced tags';
   }
@@ -204,7 +204,7 @@ function llmOtherChangePrompt(change, fallbackText, template) {
     '3. ' + template.llmTask,
     '4. Use only names, @handles and words that appear in the cells or fallbackMessage. Never',
     '   invent or change people, handles, songs, bands, numbers or changes.',
-    '5. Use only these HTML tags: <b>, <i>, <s>. Write & < > in text as &amp; &lt; &gt;.',
+    '5. Use only these HTML tags: <b>, <i>, <s>, <blockquote expandable>. Write & < > in text as &amp; &lt; &gt;.',
     '6. Output only the message: no explanations, no code fences, no sign-off.'
   ].join('\n');
   var user = JSON.stringify(change.band ? {

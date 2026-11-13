@@ -100,12 +100,12 @@ test('one message per change, band messages before Player Finder', () => {
     ['bands', 'band_changed'], ['bands', 'band_added'], ['playerFinder', 'player_changed']
   ]);
   assert.equal(ns[2].text,
-    '<b>[Player Finder: Update]</b>\n\nName: Oli (@oli)\nInstruments: <s>Drums (3)</s> → <b>Drums (4)</b>');
+    '<b>[Player Finder: Update]</b>\n\nName: Oli (@oli)\nInstruments:\n<blockquote expandable><s>Drums (3)</s>\n→\n<b>Drums (4)</b></blockquote>');
 });
 
 test('player messages list every field exactly as written, name and handle on one line, with no LLM', () => {
   const p = { sn: 1, name: 'Oli ', handle: ' @oli', instruments: 'Drums (3)\n  Bass (1)', intro: 'hi  there', note: '' };
-  const body = '\n\nName: Oli  ( @oli)\nInstruments:\nDrums (3)\n  Bass (1)\nIntro: hi  there';
+  const body = '\n\nName: Oli  ( @oli)\nInstruments:\n<blockquote expandable>Drums (3)\n  Bass (1)</blockquote>\nIntro:\n<blockquote expandable>hi  there</blockquote>';
 
   const [added] = messagesFor(run({ players: [] }, { players: [p] }), () => 'should not be used');
   assert.equal(added.text, '<b>[Player Finder: New Player]</b>' + body);
@@ -122,13 +122,13 @@ test('player messages list every field exactly as written, name and handle on on
   const long = 'x'.repeat(500);
   const [edited] = messagesFor(run({ players: [p] }, { players: [{ ...p, intro: long }] }));
   assert.ok(edited.text.includes('\nName: Oli  ( @oli)\n'));
-  assert.ok(edited.text.endsWith('Intro: <s>hi  there</s> → <b>' + long + '</b>'));
+  assert.ok(edited.text.endsWith('Intro:\n<blockquote expandable><s>hi  there</s>\n→\n<b>' + long + '</b></blockquote>'));
 });
 
 test('a changed name is shown as old → new on the Name line', () => {
   const before = { sn: 1, name: 'Oli', handle: '@oli', instruments: 'Drums (3)' };
   const [n] = messagesFor(run({ players: [before] }, { players: [{ ...before, name: 'Oliver' }] }));
-  assert.equal(n.text, '<b>[Player Finder: Update]</b>\n\nName: <s>Oli (@oli)</s> → <b>Oliver (@oli)</b>\nInstruments: Drums (3)');
+  assert.equal(n.text, '<b>[Player Finder: Update]</b>\n\nName: <s>Oli (@oli)</s> → <b>Oliver (@oli)</b>\nInstruments:\n<blockquote expandable>Drums (3)</blockquote>');
 });
 
 test('cell checks: open slots, missing @, unclear cells', () => {
@@ -195,18 +195,19 @@ test('saved switches missing a newer setting fall back to the default', () => {
   assert.equal('notARealSwitch' in alerts, false);
 });
 
-test('band messages show the description after POC, cut to 100 characters', () => {
-  const long = 'x'.repeat(120);
+test('band messages show the full description after POC, in an expandable box', () => {
+  const long = 'x'.repeat(500);
   const withDesc = (d) => band({ 'Description / Points to Take Note': [d, ''] });
   const [added] = messagesFor(run({}, { oneSong: [withDesc('looking for\nkeys & vox')] }));
-  assert.match(added.text, /\nPOC: Kim \(@kim\)\nDescription: looking for \/ keys &amp; vox\nComplete: No\n/);
+  assert.ok(added.text.includes(
+    '\nPOC: Kim (@kim)\nDescription:\n<blockquote expandable>looking for\nkeys &amp; vox</blockquote>\nComplete: No\n'));
 
   const result = run({ oneSong: [withDesc(long)] }, { oneSong: [{ ...withDesc(long), cells: { ...withDesc(long).cells, 'Complete?': ['Yes', ''] } }] });
   const [update] = messagesFor(result);
-  assert.match(update.text, new RegExp('\nDescription: ' + 'x'.repeat(100) + '\.\.\.\nComplete: '));
+  assert.ok(update.text.includes('\nDescription:\n<blockquote expandable>' + long + '</blockquote>\nComplete: '));
 
   const [removed] = messagesFor(run({ oneSong: [withDesc('hi')] }, {}));
-  assert.match(removed.text, /\nDescription: hi\nComplete: No/);
+  assert.ok(removed.text.includes('\nDescription:\n<blockquote expandable>hi</blockquote>\nComplete: No'));
 
   const [none] = messagesFor(run({}, { oneSong: [band()] }));
   assert.doesNotMatch(none.text, /Description/);
