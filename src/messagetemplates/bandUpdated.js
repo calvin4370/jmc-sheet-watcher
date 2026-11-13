@@ -8,7 +8,7 @@
  * Song 1: 夜バンド / Night Band — 夜の歌 / Night Song
  * Song 2: …
  * POC: Name (@handle)
- * Description:
+ * Description:                          (🔄 **Description:** if it changed)
  * ┃ (full description text, in an expandable box)
  * Complete: ~~No~~ → **Yes**
  *
@@ -35,8 +35,8 @@ MESSAGE_TEMPLATES.band_changed = {
     var newPoc = after.pointOfContact;
     if (!oldPoc && !newPoc) details.push('POC: —');
     else details.push(personLine('POC', oldPoc, newPoc));
-    var description = tplBandDescription(after);
-    if (description) details.push(tplBoxField('Description', description));
+    var description = tplBoxFieldChange('Description', bandDescriptionText(before), bandDescriptionText(after));
+    if (description) details.push(description);
     details.push('Complete: ' + (sameText(before.completion, after.completion)
       ? tplInline(after.completion) || '—'
       : tplChange(tplInline(before.completion), tplInline(after.completion))));

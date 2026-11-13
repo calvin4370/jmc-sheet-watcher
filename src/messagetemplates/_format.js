@@ -93,14 +93,39 @@ function tplSong(song) {
  * (HTML-escaped). '' if there is none.
  */
 function tplBandDescription(band) {
-  var block = band.block;
+  var text = bandDescriptionText(band);
+  return isBlank(text) ? '' : tplExact(text);
+}
+
+/** The band's Description cell (first row) as raw text, '' if there is none. */
+function bandDescriptionText(band) {
+  var block = band && band.block;
   if (!block) return '';
   for (var c = 0; c < block.header.length; c++) {
-    if (normaliseHeader(block.header[c]).indexOf('description') === 0) {
-      return isBlank(block.rows[0][c]) ? '' : tplExact(block.rows[0][c]);
-    }
+    if (normaliseHeader(block.header[c]).indexOf('description') === 0) return block.rows[0][c] || '';
   }
   return '';
+}
+
+/**
+ * Field name for something that changed: "🆕 <b>Label</b>" if it was empty before,
+ * "🔄 <b>Label</b>" if it was edited or cleared. Unchanged fields keep a plain label.
+ */
+function tplChangedLabel(label, wasEmpty) {
+  return (wasEmpty ? '🆕 ' : '🔄 ') + '<b>' + label + '</b>';
+}
+
+/**
+ * A boxed field that may have changed between two raw values. Unchanged: plain label,
+ * the text in a box. Changed: marked label (🆕 / 🔄); the box shows the new text in bold,
+ * or ~~old~~ → **new**, or ~~old~~ (removed). Returns '' if both are blank.
+ */
+function tplBoxFieldChange(label, oldValue, newValue) {
+  if (isBlank(oldValue) && isBlank(newValue)) return '';
+  if (sameText(oldValue, newValue)) return tplBoxField(label, tplExact(newValue));
+  if (isBlank(oldValue)) return tplBoxField(tplChangedLabel(label, true), tplBold(tplExact(newValue)));
+  return tplBoxField(tplChangedLabel(label, false),
+    tplBoxChange(tplExact(oldValue), isBlank(newValue) ? '' : tplExact(newValue)));
 }
 
 /*
@@ -191,30 +216,28 @@ function tplPlayerNameAndHandle(p) {
 
 /**
  * Every non-blank Player Finder field, exactly as written, starting with
- * "Name: <name> (<handle>)". When both versions are given, changed fields are shown
- * as ~~old~~ → **new**.
+ * "Name: <name> (<handle>)". When both versions are given (an update), changed fields
+ * get 🆕 / 🔄 and a bold label, and show ~~old~~ → **new**.
  */
 function tplPlayerFields(before, after) {
   var lines = [];
   var oldName = tplPlayerNameAndHandle(before);
   var newName = tplPlayerNameAndHandle(after);
   if (before && after && !(sameText(before.name, after.name) && sameText(before.handle, after.handle))) {
-    lines.push('Name: ' + tplChange(oldName, newName));
+    lines.push(tplChangedLabel('Name', !oldName) + ': ' + (oldName ? tplChange(oldName, newName) : tplBold(newName)));
   } else if (newName || oldName) {
     lines.push('Name: ' + (after ? newName : oldName));
   }
   PLAYER_FIELD_LABELS.forEach(function (f) {
-    var oldValue = before ? before[f[0]] : '';
-    var newValue = after ? after[f[0]] : '';
-    var shown;
-    if (before && after && !sameText(oldValue, newValue)) {
-      shown = tplBoxChange(isBlank(oldValue) ? '' : tplExact(oldValue), isBlank(newValue) ? '' : tplExact(newValue));
+    var line;
+    if (before && after) {
+      // Update: changed fields get 🆕 / 🔄 and a bold label.
+      line = tplBoxFieldChange(f[1], before[f[0]], after[f[0]]);
     } else {
-      var value = after ? newValue : oldValue;
-      if (isBlank(value)) return;
-      shown = tplExact(value);
+      var value = after ? after[f[0]] : before[f[0]];
+      line = isBlank(value) ? '' : tplBoxField(f[1], tplExact(value));
     }
-    lines.push(tplBoxField(f[1], shown));
+    if (line) lines.push(line);
   });
   return lines.join('\n');
 }

@@ -1,14 +1,19 @@
 /*
  * Message for: someone edits their Player Finder entry.
- * Lists every field exactly as written; changed fields are shown as ~~old~~ → **new**.
- * No LLM.
+ * Lists every field exactly as written. Changed fields get 🆕 (was empty) or 🔄 (edited
+ * or cleared) and a bold label; unchanged fields stay plain. No LLM.
  *
  * [Player Finder: Update]
  *
  * Name: … (@...)
- * Instruments: ~~Guitar (3)~~ → **Guitar (4)**
- * Intro: …
- * Note to POC: …
+ * 🔄 **Instruments:**
+ * ┃ ~~Guitar (3)~~
+ * ┃ →
+ * ┃ **Guitar (4)**
+ * Intro:
+ * ┃ … (unchanged)
+ * 🆕 **Note to POC:**
+ * ┃ **…**
  */
 var MESSAGE_TEMPLATES = MESSAGE_TEMPLATES || {};
 

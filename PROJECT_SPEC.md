@@ -158,6 +158,7 @@ No live Google Sheet, NUS endpoint, Telegram bot, credential, or API key is requ
 - **Player Finder names (owner decision):** every Player Finder message shows "Name: <name> (<handle>)" on one line, exactly as written; a change shows old → new on that line.
 - **Long text in boxes (owner decision):** Instruments, Intro, Note to POC, band Description and [Other Change] values always go in a Telegram expandable quote (`<blockquote expandable>`). The band Description is shown in full. Edits inside a box show ~~old~~, →, **new** on separate lines.
 - **New player in an empty slot (owner decision):** Band Update messages show "Label: 🆕 **Name (@handle)**" for roles, subs, Other instruments and a first POC; a swap shows "Label: 🔄 ~~Old~~ → **New**".
+- **Changed-field markers (owner decision):** Telegram has no coloured boxes, so in Player Finder Update messages (and the Band Update Description) a changed field gets 🆕 (was empty) or 🔄 (edited or cleared) plus a bold field name; unchanged fields stay plain.
 - **Sheet timer (owner decision):** every 5 minutes (`SETTINGS.checkEveryMinutes`).
 - **Deploying (owner decision):** the developer deploys/redeploys from VS Code with clasp. Every push or redeploy to the live project needs the owner's explicit approval first. Updates: `clasp push` + `clasp redeploy <deploymentId>` (address unchanged).
 - **State storage:** Apps Script Script Properties (chunked JSON): snapshot, subscribers, alert switches, sent-message IDs (deduplication), Telegram offset, last reported problem.

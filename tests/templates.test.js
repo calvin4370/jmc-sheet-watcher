@@ -100,7 +100,7 @@ test('one message per change, band messages before Player Finder', () => {
     ['bands', 'band_changed'], ['bands', 'band_added'], ['playerFinder', 'player_changed']
   ]);
   assert.equal(ns[2].text,
-    '<b>[Player Finder: Update]</b>\n\nName: Oli (@oli)\nInstruments:\n<blockquote expandable><s>Drums (3)</s>\n→\n<b>Drums (4)</b></blockquote>');
+    '<b>[Player Finder: Update]</b>\n\nName: Oli (@oli)\n🔄 <b>Instruments</b>:\n<blockquote expandable><s>Drums (3)</s>\n→\n<b>Drums (4)</b></blockquote>');
 });
 
 test('player messages list every field exactly as written, name and handle on one line, with no LLM', () => {
@@ -122,13 +122,40 @@ test('player messages list every field exactly as written, name and handle on on
   const long = 'x'.repeat(500);
   const [edited] = messagesFor(run({ players: [p] }, { players: [{ ...p, intro: long }] }));
   assert.ok(edited.text.includes('\nName: Oli  ( @oli)\n'));
-  assert.ok(edited.text.endsWith('Intro:\n<blockquote expandable><s>hi  there</s>\n→\n<b>' + long + '</b></blockquote>'));
+  assert.ok(edited.text.endsWith('🔄 <b>Intro</b>:\n<blockquote expandable><s>hi  there</s>\n→\n<b>' + long + '</b></blockquote>'));
 });
 
-test('a changed name is shown as old → new on the Name line', () => {
+test('a changed name is shown as 🔄 old → new on the Name line', () => {
   const before = { sn: 1, name: 'Oli', handle: '@oli', instruments: 'Drums (3)' };
   const [n] = messagesFor(run({ players: [before] }, { players: [{ ...before, name: 'Oliver' }] }));
-  assert.equal(n.text, '<b>[Player Finder: Update]</b>\n\nName: <s>Oli (@oli)</s> → <b>Oliver (@oli)</b>\nInstruments:\n<blockquote expandable>Drums (3)</blockquote>');
+  assert.equal(n.text, '<b>[Player Finder: Update]</b>\n\n🔄 <b>Name</b>: <s>Oli (@oli)</s> → <b>Oliver (@oli)</b>\nInstruments:\n<blockquote expandable>Drums (3)</blockquote>');
+});
+
+test('Player Finder updates mark only changed fields: 🆕 was empty, 🔄 edited or cleared', () => {
+  const before = { sn: 1, name: 'Jia', handle: '@jia', instruments: 'guitar (10)', intro: 'hi', note: '' };
+  const [n] = messagesFor(run({ players: [before] }, { players: [{ ...before, intro: '', note: 'I did NOT write this' }] }));
+  assert.equal(n.text, [
+    '<b>[Player Finder: Update]</b>',
+    '',
+    'Name: Jia (@jia)',
+    'Instruments:',
+    '<blockquote expandable>guitar (10)</blockquote>',
+    '🔄 <b>Intro</b>:',
+    '<blockquote expandable><s>hi</s> (removed)</blockquote>',
+    '🆕 <b>Note to POC</b>:',
+    '<blockquote expandable><b>I did NOT write this</b></blockquote>'
+  ].join('\n'));
+});
+
+test('Band Update marks the Description only when it changed', () => {
+  const desc = (d, extra = {}) => band({ 'Description / Points to Take Note': [d, ''], ...extra });
+  const [same] = messagesFor(run({ oneSong: [desc('need keys')] }, { oneSong: [desc('need keys', { 'Complete?': ['Yes', ''] })] }));
+  assert.ok(same.text.includes('\nDescription:\n<blockquote expandable>need keys</blockquote>\n'));
+  const changed = messagesFor(run({ oneSong: [desc('need keys')] }, { oneSong: [desc('found keys', { 'Complete?': ['Yes', ''] })] }));
+  assert.equal(changed[0].change.type, 'band_changed');
+  assert.ok(changed[0].text.includes('\n🔄 <b>Description</b>:\n<blockquote expandable><s>need keys</s>\n→\n<b>found keys</b></blockquote>\n'));
+  const added = messagesFor(run({ oneSong: [desc('')] }, { oneSong: [desc('found keys', { 'Complete?': ['Yes', ''] })] }));
+  assert.ok(added[0].text.includes('\n🆕 <b>Description</b>:\n<blockquote expandable><b>found keys</b></blockquote>\n'));
 });
 
 test('cell checks: open slots, missing @, unclear cells', () => {

@@ -6,15 +6,11 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-13-tools-and-new-player-emoji',
+  id: '2026-11-13-changed-field-markers',
   notes: [
-    'Questions to SoC LaaS no longer send it the whole sheet. It now looks up only what it needs ' +
-      '(the band list, one band, Player Finder, one player, or where a person appears), using a ' +
-      'fresh read of the sheet.',
-    'While it works you will see "Called tool: …" messages after "Thinking…", one per lookup. ' +
-      '"Thinking…" disappears when the answer arrives; the tool messages stay.',
-    'Band Update messages mark someone filling a previously empty slot with 🆕, e.g. ' +
-      '"Bass: 🆕 Name (@handle)" (roles, subs, Other instruments and a first POC).',
-    'Swaps are marked with 🔄, e.g. "Drums: 🔄 Old (@old) → New (@new)" (old struck out, new in bold).'
+    'Player Finder Update messages now mark only the fields that changed: 🆕 and a bold name for a ' +
+      'field that was empty before, 🔄 and a bold name for one that was edited or cleared. Unchanged ' +
+      'fields stay plain.',
+    'Band Update messages mark the Description the same way when it changed, showing old → new inside the box.'
   ]
 };
