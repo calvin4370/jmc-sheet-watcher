@@ -1,0 +1,9 @@
+{
+  "name": "guitar-sheet-watcher",
+  "private": true,
+  "description": "Read-only watcher for the JMM/JMC band signup workbook.",
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "preview": "node --env-file-if-exists=soclaas.env tools/preview.js"
+  }
+}
