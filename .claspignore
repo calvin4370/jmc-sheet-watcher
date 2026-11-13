@@ -1,0 +1,4 @@
+# clasp uploads ONLY the code and the manifest from src/ (never .env or other files).
+**/**
+!**/appsscript.json
+!**/*.js

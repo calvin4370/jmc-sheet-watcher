@@ -3,3 +3,7 @@ fixtures/*
 
 # Secrets
 *.env
+
+# Apps Script (clasp) project link and credentials
+.clasp.json
+.clasprc.json
