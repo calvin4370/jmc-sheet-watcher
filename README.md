@@ -101,7 +101,7 @@ Nothing here touches the sheet except reading it, with the `spreadsheets.readonl
    `.clasp.json` (your project link) is Git-ignored.
 3. **Set Script Properties** in the Apps Script editor (Project Settings → Script Properties):
    - `TELEGRAM_BOT_TOKEN`: from BotFather
-   - `WATCHED_SPREADSHEET_ID`: the long ID in the sheet's URL (`/d/<ID>/edit`)
+   - `WATCHED_SPREADSHEET_URL`: the sheet's link, e.g. `https://docs.google.com/spreadsheets/d/…/edit`
    - `SOCLAAS_BASE_URL`, `SOCLAAS_API_KEY`, `SOCLAAS_MODEL`: same values as `soclaas.env` (optional; without them, template messages are sent)
 4. **Deploy the web app** (Telegram delivers bot messages to it instantly): `clasp create-deployment --description "Telegram webhook"`, then put the deployment ID in `SETTINGS.webhook.deploymentId` and `clasp push`.
 5. **Start it**: in the editor, run `setup` and approve the permissions. It checks the sheet every 5 minutes and registers the webhook. `webhookStatus` shows whether Telegram can reach the bot.

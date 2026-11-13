@@ -15,7 +15,7 @@
  * Script Properties (Project Settings → Script Properties), never in code:
  *   TELEGRAM_BOT_TOKEN       from @BotFather
  *   TELEGRAM_OWNER_CHAT_ID   your chat ID (send /myid to the bot)
- *   WATCHED_SPREADSHEET_ID   the ID in the Google Sheet's URL
+ *   WATCHED_SPREADSHEET_URL  the Google Sheet's link (https://docs.google.com/spreadsheets/d/…/edit)
  *   SOCLAAS_BASE_URL, SOCLAAS_API_KEY, SOCLAAS_MODEL   (optional: LLM)
  *   TELEGRAM_WEBHOOK_SECRET  created by setup(); never shown
  */
@@ -32,7 +32,7 @@ function setup() {
   var props = PropertiesService.getScriptProperties();
   [
     ['TELEGRAM_BOT_TOKEN', true],
-    ['WATCHED_SPREADSHEET_ID', true],
+    ['WATCHED_SPREADSHEET_URL', true],
     ['TELEGRAM_OWNER_CHAT_ID', false],
     ['SOCLAAS_BASE_URL', false],
     ['SOCLAAS_API_KEY', false],
@@ -41,8 +41,14 @@ function setup() {
     var set = !!props.getProperty(c[0]);
     console.log((set ? '✓ ' : (c[1] ? '✗ MISSING ' : '– not set yet ')) + c[0]);
   });
-  if (!props.getProperty('TELEGRAM_BOT_TOKEN') || !props.getProperty('WATCHED_SPREADSHEET_ID')) {
+  if (!props.getProperty('TELEGRAM_BOT_TOKEN') || !props.getProperty('WATCHED_SPREADSHEET_URL')) {
     console.log('Not started: add the MISSING Script Properties (Project Settings), then run setup again.');
+    return;
+  }
+  try {
+    spreadsheetIdFromUrl(props.getProperty('WATCHED_SPREADSHEET_URL'));
+  } catch (e) {
+    console.log('Not started: ' + e.message);
     return;
   }
   if (ALLOWED_TIMER_MINUTES.indexOf(SETTINGS.checkEveryMinutes) < 0) {
@@ -243,7 +249,8 @@ function appsScriptContext(state) {
     api: createTelegramApi({ token: token, http: appsScriptHttp, sleep: sleep }),
     ownerChatId: props.getProperty('TELEGRAM_OWNER_CHAT_ID') || '',
     readSheets: function () {
-      return readSheetsViaApi(props.getProperty('WATCHED_SPREADSHEET_ID'), appsScriptHttp, ScriptApp.getOAuthToken());
+      return readSheetsViaApi(spreadsheetIdFromUrl(props.getProperty('WATCHED_SPREADSHEET_URL')),
+        appsScriptHttp, ScriptApp.getOAuthToken());
     },
     rewrite: createLlmRewriter({ config: appsScriptLlmConfig(), http: appsScriptHttp, sleep: sleep, log: log }),
     chat: chat,

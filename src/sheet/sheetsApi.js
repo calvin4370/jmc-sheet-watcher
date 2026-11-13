@@ -8,6 +8,20 @@
 
 var SHEETS_API_BASE = 'https://sheets.googleapis.com/v4/spreadsheets/';
 
+/**
+ * The spreadsheet ID from a Google Sheets link such as
+ * https://docs.google.com/spreadsheets/d/<ID>/edit#gid=0 (WATCHED_SPREADSHEET_URL).
+ */
+function spreadsheetIdFromUrl(url) {
+  if (isBlank(url)) throw new Error('WATCHED_SPREADSHEET_URL is not set.');
+  var match = String(url).trim().match(/^https:\/\/docs\.google\.com\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
+  if (!match) {
+    throw new Error('WATCHED_SPREADSHEET_URL must be a Google Sheets link, like ' +
+      'https://docs.google.com/spreadsheets/d/…/edit');
+  }
+  return match[1];
+}
+
 /** 'Name' -> "'Name'" for A1 ranges (single quotes doubled). */
 function quoteSheetName(name) {
   return "'" + String(name).replace(/'/g, "''") + "'";
@@ -29,7 +43,7 @@ function sheetsApiGet(url, http, accessToken) {
  * schema check reports them as missing.
  */
 function readSheetsViaApi(spreadsheetId, http, accessToken) {
-  if (!spreadsheetId) throw new Error('WATCHED_SPREADSHEET_ID is not set.');
+  if (!spreadsheetId) throw new Error('No spreadsheet ID given.');
   var base = SHEETS_API_BASE + encodeURIComponent(spreadsheetId);
 
   var meta = sheetsApiGet(base + '?fields=' + encodeURIComponent('sheets.properties.title'), http, accessToken);

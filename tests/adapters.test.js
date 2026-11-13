@@ -43,6 +43,19 @@ test('reads the three worksheets with GET requests only', () => {
   assert.doesNotMatch(f.calls[1].url, /Info/);
 });
 
+test('WATCHED_SPREADSHEET_URL: the ID is taken from a Google Sheets link', () => {
+  const id = '1AbC-_xyz123';
+  for (const url of [
+    'https://docs.google.com/spreadsheets/d/' + id + '/edit',
+    'https://docs.google.com/spreadsheets/d/' + id + '/edit#gid=0',
+    '  https://docs.google.com/spreadsheets/d/' + id + '/edit?usp=sharing  ',
+    'https://docs.google.com/spreadsheets/d/' + id
+  ]) assert.equal(g.spreadsheetIdFromUrl(url), id, url);
+  assert.throws(() => g.spreadsheetIdFromUrl(''), /WATCHED_SPREADSHEET_URL is not set/);
+  assert.throws(() => g.spreadsheetIdFromUrl(id), /must be a Google Sheets link/);
+  assert.throws(() => g.spreadsheetIdFromUrl('https://evil.example/spreadsheets/d/' + id), /must be a Google Sheets link/);
+});
+
 test('a missing worksheet is left out so the schema check fails loudly', () => {
   const f = fakeSheetsHttp(['Signup Sheet (one-song bands)', 'Player Finder'], {});
   const sheets = g.readSheetsViaApi('X', f.http, 't');

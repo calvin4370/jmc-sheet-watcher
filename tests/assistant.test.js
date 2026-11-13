@@ -107,7 +107,18 @@ test('if the live read fails, the last sheet copy is used and the answer says so
   ctx.state.snapshot = g.buildSnapshot(sheet());
   g.handleUpdate(msg(OWNER, 'anything'), ctx);
   runDeferred();
-  assert.match(ctx.api.sent(OWNER).at(-1).params.text, /^<b>\[SoC LaaS Response\]<\/b>\nNote: the sheet could not be read just now/);
+  assert.match(ctx.api.sent(OWNER).at(-1).params.text,
+    /^<b>\[SoC LaaS Response\]<\/b>\nNote: the sheet could not be read just now \(offline\), so this uses the copy/);
+});
+
+test('with no saved copy either, the reply says why the sheet could not be read', () => {
+  const reason = 'WATCHED_SPREADSHEET_URL must be a Google Sheets link, like https://docs.google.com/spreadsheets/d/…/edit';
+  const { ctx, calls, runDeferred } = setup({ readSheets: () => { throw new Error(reason); } });
+  g.handleUpdate(msg(OWNER, 'anything'), ctx);
+  runDeferred();
+  assert.equal(calls.length, 0);
+  assert.equal(ctx.api.sent(OWNER).at(-1).params.text,
+    '<b>[SoC LaaS Response]</b>\nSorry, I couldn\'t read the sheet: ' + reason);
 });
 
 test('if SoC LaaS fails, a short apology is sent and "Thinking…" is still deleted', () => {

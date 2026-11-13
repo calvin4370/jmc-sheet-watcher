@@ -56,15 +56,18 @@ function answerOwnerQuestion(later, job) {
   try {
     var snapshot;
     var note = '';
+    var readError = '';
     try {
       snapshot = buildSnapshot(later.readSheets());
     } catch (e) {
-      later.log('Live sheet read failed for a question: ' + e.message);
+      readError = e.message;
+      later.log('Live sheet read failed for a question: ' + readError);
       snapshot = job.storedSnapshot;
-      note = 'Note: the sheet could not be read just now, so this uses the copy from the last sheet check.\n\n';
+      note = 'Note: the sheet could not be read just now (' + readError +
+        '), so this uses the copy from the last sheet check.\n\n';
     }
     if (!snapshot) {
-      reply = ASSISTANT_HEADER + '\nSorry, I couldn\'t read the sheet right now.';
+      reply = ASSISTANT_HEADER + '\n' + tplEscape('Sorry, I couldn\'t read the sheet: ' + readError);
     } else {
       var answer = cleanAssistantAnswer(later.chat(assistantMessages(snapshot, job, later.now())));
       reply = ASSISTANT_HEADER + '\n' + tplEscape(note + answer);
