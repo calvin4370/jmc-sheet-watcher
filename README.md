@@ -1,6 +1,6 @@
 # Guitar Sheet Watcher
 
-Guitar Sheet Watcher monitors a live Google Sheets workbook used for JMM/JMC band signups and produces validated Telegram notifications. Change detection, message templates and the SOC LaaS (LLM) integration are implemented and tested. Nothing connects to the live workbook or Telegram yet.
+Guitar Sheet Watcher monitors a live Google Sheets workbook used for JMM/JMC band signups and produces validated Telegram notifications. Change detection, message templates, the SOC LaaS (LLM) integration and the Telegram bot are implemented and tested offline. It has not been deployed: see "Deploying to Apps Script".
 
 ## Scope and safety
 
@@ -54,7 +54,8 @@ No secrets, API keys, live workbook access, NUS credentials, or Telegram credent
 ## Current repository state
 
 - Implemented and tested offline: worksheet/header validation, paired-row parsing, Player Finder parsing, snapshots, the deterministic diff engine, the settings file, per-subscriber alert switches, one message template per change type, cell checks (open slots, missing @, unclear cells), and the SOC LaaS rewrite for unclear cells with output validation, retries and fallback.
-- Not yet implemented: the live Sheets adapter, state storage, Telegram bot (delivery, `/settings` buttons, subscriber approval), scheduling, deduplication.
+- Implemented and tested offline: read-only Sheets API adapter, Telegram bot (owner-approved subscribers, `/settings` buttons, `/subscribers`), alert delivery with deduplication and retry, problem/recovery messages to the owner, state storage in Script Properties, the Telegram webhook (instant bot replies) and the 5-minute sheet timer.
+- Not yet done: deployment to Apps Script (needs your Google account and bot token).
 - Local fixture: `fixtures/JMM 27 signups.xlsx` (ignored by Git).
 
 ## Running the tests
@@ -85,17 +86,44 @@ npm test
   SOCLAAS_MODEL=...
   ```
 
+## Deploying to Apps Script
+
+Nothing here touches the sheet except reading it, with the `spreadsheets.readonly` scope.
+
+1. **Create the bot**: in Telegram, message `@BotFather`, send `/newbot`, and keep the token private.
+2. **Create the Apps Script project** (needs Node.js):
+   ```sh
+   npm install -g @google/clasp
+   clasp login
+   clasp create --type standalone --title "JMC Sheet Watcher" --rootDir src
+   clasp push
+   ```
+   `.clasp.json` (your project link) is Git-ignored.
+3. **Set Script Properties** in the Apps Script editor (Project Settings → Script Properties):
+   - `TELEGRAM_BOT_TOKEN`: from BotFather
+   - `WATCHED_SPREADSHEET_ID`: the long ID in the sheet's URL (`/d/<ID>/edit`)
+   - `SOCLAAS_BASE_URL`, `SOCLAAS_API_KEY`, `SOCLAAS_MODEL`: same values as `soclaas.env` (optional; without them, template messages are sent)
+4. **Deploy the web app** (Telegram delivers bot messages to it instantly): `clasp create-deployment --description "Telegram webhook"`, then put the deployment ID in `SETTINGS.webhook.deploymentId` and `clasp push`.
+5. **Start it**: in the editor, run `setup` and approve the permissions. It checks the sheet every 5 minutes and registers the webhook. `webhookStatus` shows whether Telegram can reach the bot.
+6. **Make yourself the owner**: send `/myid` to your bot, put the number in a Script Property `TELEGRAM_OWNER_CHAT_ID`, then send `/start`.
+7. The first sheet check saves a baseline silently. Alerts start with the next change.
+
+Other people subscribe by sending `/start` to the bot; you get an Approve/Reject message. Useful editor functions: `webhookStatus`, `checkSheetNow`, `resetBaseline`, `stopWatcher` (stops the timer and the webhook).
+
+**Updating the live watcher:** after an approved change, `clasp push` then `clasp redeploy <deploymentId>`. The bot's address stays the same, and subscribers, settings and history are kept.
+
 ## Code layout
 
-`src/` files are plain global functions so the same code runs in Google Apps Script and in Node tests.
+`src/` files are plain global functions so the same code runs in Google Apps Script and in Node tests. Every file is in a folder except `appsscript.json`, which Apps Script requires at the top.
 
-- `settings.js`: **the settings file you edit**: owner settings, LLM settings, default alerts.
-- `messagetemplates/`: **one file per kind of message** (new band, band update, band removed, player added/updated/removed). Each has a `render` function for the layout. Headers are always bold. `_format.js` holds shared helpers such as role names ("Lead Guitar") and strike/bold formatting.
-- `schema.js`: expected worksheet names and headers.
-- `parseSignups.js` / `parsePlayerFinder.js`: turn sheet rows into band and player records.
-- `diff.js`: decides what changed between two snapshots.
-- `detectChanges.js`: entry point: validate, parse, then baseline or diff.
-- `notifications.js`: one message per change, using its template.
-- `cellChecks.js`: decides whether a person cell is clear, an open slot, or unclear.
-- `llm.js`: SOC LaaS rewrite of messages with unclear cells: prompt, API call with retries, and validation.
-- `alerts.js`: applies a subscriber's alert switches.
+- `config/settings.js`: **the settings file you edit**: sheet timer, webhook deployment, LLM settings, default alerts.
+- `config/schema.js`: expected worksheet names and headers.
+- `messagetemplates/`: **one file per kind of message** (new band, band update, band removed, other change, player added/updated/removed). Each has a `render` function for the layout. Headers are always bold. `_format.js` holds shared helpers such as role names ("Lead Guitar") and strike/bold formatting.
+- `sheet/`: reading the sheet. `sheetsApi.js` (Google Sheets API, GET only, read-only scope), `parseSignups.js` / `parsePlayerFinder.js` (rows into band and player records), `cellChecks.js` (clear, open slot or unclear cell).
+- `changes/`: `diff.js` decides what changed between two snapshots; `detectChanges.js` validates, parses, then baselines or diffs.
+- `notify/`: `notifications.js` makes one message per change from its template; `alerts.js` applies a subscriber's alert switches.
+- `llm/`: `llm.js` (SoC LaaS calls with retries, rewrites of unclear-cell and [Other Change] messages, and their checks); `assistant.js` (the owner's plain messages answered from the live sheet as [SoC LaaS Response]).
+- `telegram/`: `telegram.js` (Bot API client; the token never appears in errors); `bot.js` (commands and buttons: `/start` with owner approval, `/settings`, `/stop`, `/myid`, `/subscribers`).
+- `app/`: `main.js` (Apps Script entry points: `setup`, `doPost` webhook, `tick` sheet timer, `webhookStatus`, `checkSheetNow`, `resetBaseline`, `stopWatcher`); `watcher.js` (each bot message once, sheet checks, alerts once per subscriber); `state.js` (snapshot, subscribers, sent-message IDs and conversation memory in Script Properties).
+- `shared/util.js`: small helpers used everywhere.
+- `appsscript.json`: Apps Script manifest. Scopes: read-only spreadsheets, external requests, triggers. Web app for the Telegram webhook.
