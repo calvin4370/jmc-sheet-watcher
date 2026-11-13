@@ -110,7 +110,7 @@ Nothing here touches the sheet except reading it, with the `spreadsheets.readonl
 
 Other people subscribe by sending `/start` to the bot; you get an Approve/Reject message. Useful editor functions: `webhookStatus`, `checkSheetNow`, `resetBaseline`, `stopWatcher` (stops the timer and the webhook).
 
-**Updating the live watcher:** after an approved change, `clasp push` then `clasp redeploy <deploymentId>`. The bot's address stays the same, and subscribers, settings and history are kept.
+**Updating the live watcher:** after an approved change, write the release notes in `src/config/release.js`, then `clasp push` and `clasp redeploy <deploymentId>`. The bot tells the owner what changed on its next run. The bot's address stays the same, and subscribers, settings and history are kept.
 
 ## Code layout
 
@@ -118,6 +118,7 @@ Other people subscribe by sending `/start` to the bot; you get an Approve/Reject
 
 - `config/settings.js`: **the settings file you edit**: sheet timer, webhook deployment, LLM settings, default alerts.
 - `config/schema.js`: expected worksheet names and headers.
+- `config/release.js`: release notes. After each update the bot sends the owner a [Bot Updated] message with them, once. Give it a new `id` and new notes for every deploy.
 - `messagetemplates/`: **one file per kind of message** (new band, band update, band removed, other change, player added/updated/removed). Each has a `render` function for the layout. Headers are always bold. `_format.js` holds shared helpers such as role names ("Lead Guitar") and strike/bold formatting.
 - `sheet/`: reading the sheet. `sheetsApi.js` (Google Sheets API, GET only, read-only scope), `parseSignups.js` / `parsePlayerFinder.js` (rows into band and player records), `cellChecks.js` (clear, open slot or unclear cell).
 - `changes/`: `diff.js` decides what changed between two snapshots; `detectChanges.js` validates, parses, then baselines or diffs.

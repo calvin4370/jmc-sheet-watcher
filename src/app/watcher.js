@@ -72,6 +72,25 @@ function webhookUrl(deploymentId, secret) {
     '/exec?secret=' + encodeURIComponent(secret);
 }
 
+/**
+ * After an update, tells the owner what changed (RELEASE in config/release.js), once.
+ * If sending fails, it's tried again on the next run.
+ */
+function announceRelease(ctx) {
+  if (!ctx.ownerChatId || typeof RELEASE === 'undefined') return false;
+  if (ctx.state.lastAnnouncedRelease === RELEASE.id) return false;
+  var text = '<b>[Bot Updated]</b>\nWhat\'s new:\n' +
+    RELEASE.notes.map(function (n) { return '• ' + tplEscape(n); }).join('\n');
+  try {
+    botSend(ctx, ctx.ownerChatId, text);
+  } catch (e) {
+    ctx.log('Could not send the update notice: ' + e.message);
+    return false;
+  }
+  ctx.state.lastAnnouncedRelease = RELEASE.id;
+  return true;
+}
+
 /** Tells the owner about a problem, once per distinct problem. */
 function reportProblem(ctx, message) {
   ctx.log(message);

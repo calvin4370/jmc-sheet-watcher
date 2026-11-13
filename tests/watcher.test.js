@@ -181,3 +181,25 @@ test('the webhook secret check', () => {
   assert.equal(g.secretsMatch('', ''), false); // no secret set: reject everything
   assert.equal(g.webhookUrl('DEP_ID', 's3cr3t'), 'https://script.google.com/macros/s/DEP_ID/exec?secret=s3cr3t');
 });
+
+test('after an update the owner is told what changed, once; a failed notice is retried', () => {
+  const api = fakeApi({ failFor: { [OWNER]: 500 } });
+  const ctx = fakeCtx({ api });
+  assert.equal(g.announceRelease(ctx), false); // sending failed
+  assert.equal(ctx.state.lastAnnouncedRelease, '');
+
+  api.failuresOn = false;
+  assert.equal(g.announceRelease(ctx), true);
+  const notice = api.sent(OWNER).at(-1).params;
+  assert.match(notice.text, /^<b>\[Bot Updated\]<\/b>\nWhat's new:\n• /);
+  assert.equal(notice.text.split('\n• ').length - 1, g.RELEASE.notes.length);
+  assert.equal(ctx.state.lastAnnouncedRelease, g.RELEASE.id);
+
+  const count = api.sent(OWNER).length;
+  assert.equal(g.announceRelease(ctx), false);
+  assert.equal(api.sent(OWNER).length, count);
+
+  const noOwner = fakeCtx({ owner: '' });
+  assert.equal(g.announceRelease(noOwner), false);
+  assert.equal(noOwner.api.calls.length, 0);
+});

@@ -104,6 +104,7 @@ function doPost(e) {
   var deferred = [];
   try {
     deferred = withState(function (state, ctx) {
+      announceRelease(ctx);
       drainQueuedUpdates(ctx, props);
       processTelegramUpdate(ctx, update);
     });
@@ -121,6 +122,7 @@ function webhookReply() {
 /** The timer: handles any queued bot messages, then checks the sheet. */
 function tick() {
   runLocked(function (state, ctx) {
+    announceRelease(ctx);
     drainQueuedUpdates(ctx, PropertiesService.getScriptProperties());
     runSheetCheck(ctx);
   });
