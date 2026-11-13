@@ -38,7 +38,7 @@ function normaliseState(state) {
  * alerts: the subscriber's own switches (missing ones use SETTINGS.defaultAlerts)
  */
 function newSubscriber(chatId, name, status, now) {
-  return { chatId: String(chatId), name: name, status: status, alerts: {}, sent: [], since: now };
+  return { chatId: String(chatId), name: name, status: status, alerts: {}, favourites: [], sent: [], since: now };
 }
 
 function approvedSubscribers(state) {

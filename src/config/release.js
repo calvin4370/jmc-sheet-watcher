@@ -6,11 +6,13 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-13-changed-field-markers',
+  id: '2026-11-13-favourites',
   notes: [
-    'Player Finder Update messages now mark only the fields that changed: 🆕 and a bold name for a ' +
-      'field that was empty before, 🔄 and a bold name for one that was edited or cleared. Unchanged ' +
-      'fields stay plain.',
-    'Band Update messages mark the Description the same way when it changed, showing old → new inside the box.'
+    'New: favourite players. Send /favourite Name (@handle) to add someone, /favourites to see your ' +
+      'list (with remove buttons), and /unfavourite @handle to remove one. Every approved subscriber ' +
+      'has their own list. Handles are matched ignoring capital letters.',
+    'When a favourite joins, leaves or is swapped in a band, or their Player Finder entry changes, ' +
+      'you also get "⭐ One of your favourite players has an update: Name (@handle)" as a reply to that update.',
+    'Favourites override your /settings: you get their updates even if that alert type is switched off.'
   ]
 };

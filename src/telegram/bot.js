@@ -8,6 +8,7 @@
  *   /stop         stop alerts (send /start to resume)
  *   /myid         show your chat ID (used once, to set TELEGRAM_OWNER_CHAT_ID)
  *   /subscribers  owner only: list subscribers with Approve / Reject / Remove buttons
+ *   /favourite Name (@handle), /unfavourite @handle, /favourites   (see favourites.js)
  *   /help
  * Plain messages from the owner are answered by SoC LaaS (assistant.js).
  */
@@ -78,6 +79,9 @@ function helpText(ctx, chatId) {
   return '<b>[Help]</b>\n' +
     '/settings – choose which alerts you get\n' +
     '/stop – stop alerts (send /start to resume)\n' +
+    '/favourite Name (@handle) – get a ⭐ when their entry changes\n' +
+    '/unfavourite @handle – remove a favourite\n' +
+    '/favourites – see your favourites\n' +
     '/myid – show your chat ID' +
     (isOwner(ctx, chatId) ? '\n/subscribers – see and manage subscribers' : '');
 }
@@ -132,8 +136,53 @@ function handleMessage(message, ctx) {
     case 'subscribers':
       if (isOwner(ctx, chatId)) { subscribersCommand(chatId, ctx); return; }
       break;
+    case 'favourite':
+    case 'favorite':
+      favouriteCommand(sub, chatId, text.slice(match[0].length), ctx);
+      return;
+    case 'unfavourite':
+    case 'unfavorite':
+      unfavouriteCommand(sub, chatId, text.slice(match[0].length), ctx);
+      return;
+    case 'favourites':
+    case 'favorites': {
+      var list = favouritesMessage(sub.favourites);
+      botSend(ctx, chatId, list.text, list.replyMarkup);
+      return;
+    }
   }
   botSend(ctx, chatId, helpText(ctx, chatId));
+}
+
+function favouriteCommand(sub, chatId, args, ctx) {
+  var handle = handleFromText(args);
+  if (!handle) {
+    botSend(ctx, chatId, 'Please include their Telegram handle, e.g. /favourite Oli (@oli).');
+    return;
+  }
+  sub.favourites = sub.favourites || [];
+  var key = handleKey(handle);
+  if (sub.favourites.some(function (h) { return handleKey(h) === key; })) {
+    botSend(ctx, chatId, tplEscape(handle) + ' is already one of your favourites.');
+    return;
+  }
+  if (sub.favourites.length >= MAX_FAVOURITES) {
+    botSend(ctx, chatId, 'You already have ' + MAX_FAVOURITES + ' favourites. Remove one with /favourites first.');
+    return;
+  }
+  sub.favourites.push(handle);
+  botSend(ctx, chatId, '⭐ Added ' + tplEscape(handle) + ' to your favourites. You\'ll get a ⭐ message whenever ' +
+    'they join, leave or are swapped in a band, or their Player Finder entry changes.');
+}
+
+function unfavouriteCommand(sub, chatId, args, ctx) {
+  var handle = handleFromText(args);
+  var key = handleKey(handle);
+  var before = (sub.favourites || []).length;
+  sub.favourites = (sub.favourites || []).filter(function (h) { return handleKey(h) !== key; });
+  botSend(ctx, chatId, handle && sub.favourites.length < before
+    ? 'Removed ' + tplEscape(handle) + ' from your favourites.'
+    : 'That handle isn\'t in your favourites. See them with /favourites.');
 }
 
 function startCommand(message, chatId, ctx) {
@@ -230,6 +279,21 @@ function handleCallback(cq, ctx) {
           chat_id: chatId,
           message_id: cq.message.message_id,
           reply_markup: settingsKeyboard(resolveAlerts(sub.alerts))
+        });
+      }
+    } else if (action === 'unfav') {
+      var fanSub = ctx.state.subscribers[chatId];
+      if (!fanSub || fanSub.status !== 'approved') answer = 'Send /start to ask for alerts.';
+      else {
+        fanSub.favourites = (fanSub.favourites || []).filter(function (h) { return handleKey(h) !== arg; });
+        answer = 'Removed';
+        var updated = favouritesMessage(fanSub.favourites);
+        ctx.api.call('editMessageText', {
+          chat_id: chatId,
+          message_id: cq.message.message_id,
+          text: updated.text,
+          parse_mode: 'HTML',
+          reply_markup: updated.replyMarkup || { inline_keyboard: [] }
         });
       }
     } else if (OWNER_ACTIONS[action]) {

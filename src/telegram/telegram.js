@@ -54,5 +54,8 @@ function sendTelegram(api, chatId, text, options) {
   var params = { chat_id: chatId, text: text, link_preview_options: { is_disabled: true } };
   if (options && options.parseMode) params.parse_mode = options.parseMode;
   if (options && options.replyMarkup) params.reply_markup = options.replyMarkup;
+  if (options && options.replyTo) {
+    params.reply_parameters = { message_id: options.replyTo, allow_sending_without_reply: true };
+  }
   return api.call('sendMessage', params);
 }

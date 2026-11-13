@@ -91,6 +91,41 @@ function announceRelease(ctx) {
   return true;
 }
 
+/**
+ * Sends one alert message to a subscriber and records `id` as sent, so it is never sent
+ * twice. Returns { status: 'sent' | 'skip' | 'retry', messageId }.
+ * - Telegram rejects the formatting: the same text is resent without it.
+ * - 403 (they blocked the bot): the subscriber is marked stopped.
+ * - Other 400s: given up (retrying won't help). Anything else: retry on the next check.
+ */
+function deliverOnce(ctx, sub, id, text, parseMode, replyTo) {
+  try {
+    var result;
+    try {
+      result = sendTelegram(ctx.api, sub.chatId, text, { parseMode: parseMode, replyTo: replyTo });
+    } catch (e) {
+      if (e.status !== 400 || !parseMode) throw e;
+      result = sendTelegram(ctx.api, sub.chatId, llmUnescape(text), { parseMode: null, replyTo: replyTo });
+    }
+    sub.sent.push(id);
+    ctx.sleep(SEND_GAP_MS);
+    return { status: 'sent', messageId: result && result.message_id };
+  } catch (e) {
+    if (e.status === 403) {
+      sub.status = 'stopped';
+      ctx.log('Chat ' + sub.chatId + ' blocked the bot; marked as stopped.');
+      return { status: 'skip' };
+    }
+    if (e.status === 400) {
+      ctx.log('Telegram refused a message for chat ' + sub.chatId + ': ' + e.message);
+      sub.sent.push(id);
+      return { status: 'skip' };
+    }
+    ctx.log('Could not send to chat ' + sub.chatId + ': ' + e.message);
+    return { status: 'retry' };
+  }
+}
+
 /** Tells the owner about a problem, once per distinct problem. */
 function reportProblem(ctx, message) {
   ctx.log(message);
@@ -144,31 +179,25 @@ function runSheetCheck(ctx) {
   var sent = 0;
   var retryLater = false;
   approvedSubscribers(state).forEach(function (sub) {
-    notificationsFor(notifications, resolveAlerts(sub.alerts)).forEach(function (n) {
-      if (sub.status !== 'approved' || sub.sent.indexOf(n.id) >= 0) return;
-      try {
-        try {
-          sendTelegram(ctx.api, sub.chatId, n.text, { parseMode: n.parseMode });
-        } catch (e) {
-          if (e.status !== 400 || !n.parseMode) throw e;
-          // Telegram rejected the formatting: send the same text without it.
-          sendTelegram(ctx.api, sub.chatId, llmUnescape(n.text), { parseMode: null });
-        }
-        sub.sent.push(n.id);
+    var alerts = resolveAlerts(sub.alerts);
+    notifications.forEach(function (n) {
+      if (sub.status !== 'approved') return;
+      // Favourites override the subscriber's switches (see notify/favourites.js).
+      var favourites = favouritesInChange(n.change, sub.favourites);
+      if (!favourites.length && !wantsChange(n.change, alerts)) return;
+
+      var updateMessageId = null;
+      if (sub.sent.indexOf(n.id) < 0) {
+        var update = deliverOnce(ctx, sub, n.id, n.text, n.parseMode, null);
+        if (update.status === 'retry') retryLater = true;
+        if (update.status !== 'sent') return;
+        updateMessageId = update.messageId;
         sent++;
         if (String(sub.chatId) === String(ctx.ownerChatId)) rememberAlert(state, n.text, ctx.now());
-        ctx.sleep(SEND_GAP_MS);
-      } catch (e) {
-        if (e.status === 403) {
-          sub.status = 'stopped'; // they blocked the bot
-          ctx.log('Chat ' + sub.chatId + ' blocked the bot; marked as stopped.');
-        } else if (e.status === 400) {
-          ctx.log('Telegram refused a message for chat ' + sub.chatId + ': ' + e.message);
-          sub.sent.push(n.id); // retrying won't help
-        } else {
-          ctx.log('Could not send to chat ' + sub.chatId + ': ' + e.message);
-          retryLater = true;
-        }
+      }
+      if (favourites.length && sub.sent.indexOf(n.id + ':star') < 0) {
+        var star = deliverOnce(ctx, sub, n.id + ':star', favouriteNotice(favourites), 'HTML', updateMessageId);
+        if (star.status === 'retry') retryLater = true;
       }
     });
     if (sub.sent.length > MAX_SENT_IDS) sub.sent = sub.sent.slice(-MAX_SENT_IDS);
