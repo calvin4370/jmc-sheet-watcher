@@ -122,6 +122,21 @@ function actionToolSpecs() {
       describe: function (args) { return 'Stop watching ' + tplEscape(watchedBandLabel(toolBandId(args))); },
       apply: function (env, args) { return actionUnwatchBand(env.sub, toolBandId(args)); }
     },
+    list_my_bands: {
+      tool: strictTool('list_my_bands', 'The bands the person is in (/me), found by their Telegram @handle, with ' +
+        'their roles, and their Player Finder entry if any. Uses the copy from the last sheet check.', {}),
+      read: function (env) {
+        if (!env.sub.username) return { handle: '', note: 'They have no Telegram username, so they can\'t be found.' };
+        var found = findMyBands(env.state.snapshot, env.sub.username);
+        return {
+          handle: env.sub.username,
+          bands: found.bands.map(function (f) {
+            return { band: watchedBandLabel(f.band.id), roles: f.roles };
+          }),
+          playerFinder: found.player ? { name: found.player.name, instruments: found.player.instruments } : null
+        };
+      }
+    },
     get_my_chat_id: {
       tool: strictTool('get_my_chat_id', 'The person\'s Telegram chat ID (/myid).', {}),
       read: function (env) { return { chat_id: env.chatId }; }

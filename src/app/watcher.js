@@ -211,9 +211,12 @@ function runSheetCheck(ctx) {
       if (sub.status !== 'approved') return;
       // Favourites and watched bands override the subscriber's switches
       // (see notify/favourites.js and notify/watch.js).
+      // Favourites, watched bands and the subscriber's own bands override their switches
+      // (notify/favourites.js, notify/watch.js, notify/myBands.js).
       var favourites = favouritesInChange(n.change, sub.favourites);
-      var watched = changeIsWatched(n.change, sub.watching);
-      if (!favourites.length && !watched && !wantsChange(n.change, alerts)) return;
+      var mine = myBandInChange(n.change, sub, alerts);
+      var watched = !mine && changeIsWatched(n.change, sub.watching); // 🎸 replaces 👀
+      if (!favourites.length && !mine && !watched && !wantsChange(n.change, alerts)) return;
 
       var updateMessageId = null;
       if (sub.sent.indexOf(n.id) < 0) {
@@ -227,6 +230,10 @@ function runSheetCheck(ctx) {
       if (favourites.length && sub.sent.indexOf(n.id + ':star') < 0) {
         var star = deliverOnce(ctx, sub, n.id + ':star', favouriteNotice(favourites), 'HTML', updateMessageId);
         if (star.status === 'retry') retryLater = true;
+      }
+      if (mine && sub.status === 'approved' && sub.sent.indexOf(n.id + ':mine') < 0) {
+        var guitar = deliverOnce(ctx, sub, n.id + ':mine', myBandNotice(mine), 'HTML', updateMessageId);
+        if (guitar.status === 'retry') retryLater = true;
       }
       if (watched && sub.status === 'approved' && sub.sent.indexOf(n.id + ':watch') < 0) {
         var eyes = deliverOnce(ctx, sub, n.id + ':watch', watchNotice(n.change), 'HTML', updateMessageId);

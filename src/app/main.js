@@ -11,6 +11,7 @@
  * Called automatically:
  *   doPost(e)        Telegram delivers each bot message here, instantly (webhook)
  *   tick()           the timer: checks the sheet every SETTINGS.checkEveryMinutes
+ *   dailyReport()    the 9am timer: health checks + sheet stats for the owner
  *
  * Script Properties (Project Settings → Script Properties), never in code:
  *   TELEGRAM_BOT_TOKEN       from @BotFather
@@ -63,6 +64,8 @@ function setup() {
 
   appsScriptSetTimerMinutes(SETTINGS.checkEveryMinutes, true);
   console.log('✓ Sheet timer: every ' + SETTINGS.checkEveryMinutes + ' minutes.');
+  ensureDailyReportTimer(true);
+  console.log('✓ Daily report: every day at ' + DAILY_REPORT_HOUR + 'am Singapore time.');
 
   var ctx = appsScriptContext(appsScriptLoadState());
   if (!SETTINGS.webhook.deploymentId) {
@@ -121,6 +124,11 @@ function webhookReply() {
 /** The timer: handles any queued bot messages, then checks the sheet. */
 function tick() {
   runLocked(function (state, ctx) {
+    try {
+      ensureDailyReportTimer(false);
+    } catch (e) {
+      console.log('Could not set the daily report timer: ' + e.message);
+    }
     announceRelease(ctx);
     drainQueuedUpdates(ctx, PropertiesService.getScriptProperties());
     runSheetCheck(ctx);
@@ -166,9 +174,66 @@ function stopWatcher() {
 
 function removeTimers() {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'tick') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'tick' || t.getHandlerFunction() === 'dailyReport') ScriptApp.deleteTrigger(t);
   });
-  PropertiesService.getScriptProperties().deleteProperty(TIMER_MINUTES_PROPERTY);
+  var props = PropertiesService.getScriptProperties();
+  props.deleteProperty(TIMER_MINUTES_PROPERTY);
+  props.deleteProperty(DAILY_REPORT_PROPERTY);
+}
+
+/* ---------------- Daily report (owner decision: 9am every day) ---------------- */
+var DAILY_REPORT_HOUR = 9;
+var DAILY_REPORT_PROPERTY = 'DAILY_REPORT_TIMER';
+
+/**
+ * Makes sure the 9am timer exists. Called by setup() and on every tick, so the live bot
+ * gets it without re-running setup. Google runs it some time between 9 and 10am.
+ */
+function ensureDailyReportTimer(force) {
+  var props = PropertiesService.getScriptProperties();
+  if (!force && props.getProperty(DAILY_REPORT_PROPERTY)) return;
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'dailyReport') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('dailyReport').timeBased().atHour(DAILY_REPORT_HOUR).everyDays(1)
+    .inTimezone('Asia/Singapore').create();
+  props.setProperty(DAILY_REPORT_PROPERTY, String(DAILY_REPORT_HOUR));
+}
+
+/** The 9am timer: sends the owner the daily report (health checks + sheet stats). */
+function dailyReport() {
+  runLocked(function (state, ctx) {
+    if (!ctx.ownerChatId) return;
+    botSend(ctx, ctx.ownerChatId, dailyReportMessage(ctx, appsScriptHealth(ctx)), dismissButton());
+  }, 60000);
+}
+
+/** Gathers the daily report's health checks. */
+function appsScriptHealth(ctx) {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var storageBytes = 0;
+  Object.keys(all).forEach(function (k) { storageBytes += utf8Bytes(k) + utf8Bytes(all[k]); });
+
+  var webhook;
+  try {
+    var info = ctx.api.call('getWebhookInfo', {});
+    webhook = {
+      url: !!info.url,
+      pending: info.pending_update_count || 0,
+      lastErrorAt: info.last_error_date ? info.last_error_date * 1000 : 0,
+      lastError: info.last_error_message || ''
+    };
+  } catch (e) {
+    webhook = { checkError: e.message };
+  }
+
+  return {
+    timerRunning: ScriptApp.getProjectTriggers().some(function (t) { return t.getHandlerFunction() === 'tick'; }),
+    timerMinutes: Number(props.getProperty(TIMER_MINUTES_PROPERTY)) || SETTINGS.checkEveryMinutes,
+    webhook: webhook,
+    storageBytes: storageBytes
+  };
 }
 
 /** Script Property holding how often the sheet timer currently runs. */
@@ -189,10 +254,10 @@ function appsScriptSetTimerMinutes(minutes, force) {
   console.log('Sheet timer: every ' + minutes + ' minute(s).');
 }
 
-/** Runs fn(state, ctx) under the script lock (skips if another run holds it). */
-function runLocked(fn) {
+/** Runs fn(state, ctx) under the script lock (skips if another run holds it for waitMs). */
+function runLocked(fn, waitMs) {
   var lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) {
+  if (!lock.tryLock(waitMs || 10000)) {
     console.log('Another run is still going; skipping.');
     return;
   }

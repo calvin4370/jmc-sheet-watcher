@@ -72,9 +72,9 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
   assert.match(opening[0].content, /The owner is User100 on Telegram\. "Me" or "I" means them/);
   assert.match(opening[0].content, /their \/aboutme note\):\n\(empty\)$/, 'no note yet');
   assert.deepEqual(calls[0].tools.map((t) => t.function.name),
-    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person',
+    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'get_stats', 'find_person',
       'get_alert_settings', 'set_alerts', 'stop_alerts', 'list_favourites', 'add_favourite', 'remove_favourite',
-      'list_watched_bands', 'watch_band', 'unwatch_band', 'get_my_chat_id',
+      'list_watched_bands', 'watch_band', 'unwatch_band', 'list_my_bands', 'get_my_chat_id',
       'get_status', 'list_subscribers', 'manage_subscriber', 'update_about_me', 'clear_about_me']);
   assert.equal(calls[0].toolChoice, 'auto');
 

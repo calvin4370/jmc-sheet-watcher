@@ -82,6 +82,15 @@ var ASSISTANT_TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_stats',
+      description: 'Sheet numbers: how many bands (one-song, two-song), how many are complete, the most-needed ' +
+        'roles (empty roles in bands not complete), and how many people are in Player Finder.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'find_person',
       description: 'Find everywhere a person appears (band roles, substitutions, other instruments, point ' +
         'of contact, Player Finder) by name or Telegram handle (partial, case-insensitive).',
@@ -194,6 +203,9 @@ function runAssistantTool(snapshot, name, args) {
       });
       return hits.length ? hits : { error: 'Nobody matches "' + args.query + '".' };
     }
+
+    case 'get_stats':
+      return sheetStats(snapshot);
 
     default:
       return { error: 'Unknown tool "' + name + '".' };

@@ -44,7 +44,8 @@ test('a new person asks, the owner approves, then they can use /settings', () =>
   handle(ctx, msg(7, '/settings'));
   const settings = ctx.api.sent(7).at(-1).params;
   assert.equal(settings.text, g.SETTINGS_TEXT);
-  assert.equal(settings.reply_markup.inline_keyboard[0][0].text, '✅ Band alerts');
+  assert.equal(settings.reply_markup.inline_keyboard[0][0].text, '✅ 🎸 My bands');
+  assert.equal(settings.reply_markup.inline_keyboard[1][0].text, '✅ Band alerts');
 });
 
 test('only the owner can approve, reject or remove', () => {

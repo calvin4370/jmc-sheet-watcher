@@ -57,6 +57,10 @@ var SETTINGS = {
   // Each subscriber can change their own copy with /settings in the bot.
   // ---------------------------------------------------------------------------
   defaultAlerts: {
+    // Bands with the subscriber's own Telegram @handle in them: every update, with a 🎸
+    // reply, even if that alert type is off (notify/myBands.js)
+    myBands: true,
+
     // Band signups (both signup sheets)
     bands: true,               // master switch for all band alerts below
     bandAdded: true,           // a new band appears

@@ -67,7 +67,7 @@ test('every tool is strict: all fields required, no extra fields, at every level
 test('subscribers are only offered their own commands; owner-only tools are refused anyway', () => {
   const names = g.actionToolDefinitions(false).map((t) => t.function.name);
   assert.deepEqual(names, ['get_alert_settings', 'set_alerts', 'stop_alerts', 'list_favourites', 'add_favourite',
-    'remove_favourite', 'list_watched_bands', 'watch_band', 'unwatch_band', 'get_my_chat_id']);
+    'remove_favourite', 'list_watched_bands', 'watch_band', 'unwatch_band', 'list_my_bands', 'get_my_chat_id']);
   const ctx = setup();
   for (const [name, args] of [['get_status', {}], ['list_subscribers', {}], ['manage_subscriber', { chat_id: '8', action: 'approve' }],
     ['update_about_me', { info: 'x' }], ['clear_about_me', {}]]) {

@@ -99,3 +99,68 @@ function appsScriptLlmRequestsToday() {
   var usage = appsScriptLlmUsage(PropertiesService.getScriptProperties());
   return usage && usage.day === singaporeDay(Date.now()) ? usage.requests : 0;
 }
+
+/* ---------------- Daily report ----------------
+ * Owner decision: every day at 9am Singapore time (Google runs daily timers some time
+ * between 9 and 10), the owner gets health checks plus the sheet stats, with a Dismiss
+ * button. Nothing here calls SoC LaaS.
+ *
+ * health (gathered in main.js): {
+ *   timerRunning, timerMinutes,
+ *   webhook: { url: true/false, pending, lastErrorAt (ms), lastError } or { checkError },
+ *   storageBytes
+ * }
+ */
+var STORAGE_LIMIT_BYTES = 500 * 1024; // Apps Script's limit for Script Properties
+var STORAGE_WARN_SHARE = 0.8;
+
+/** Bytes a string takes as UTF-8. */
+function utf8Bytes(text) {
+  var bytes = 0;
+  text = String(text);
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charCodeAt(i);
+    if (c < 0x80) bytes += 1;
+    else if (c < 0x800) bytes += 2;
+    else if (c >= 0xD800 && c <= 0xDBFF) { bytes += 4; i++; } // a surrogate pair (e.g. emoji)
+    else bytes += 3;
+  }
+  return bytes;
+}
+
+function dailyReportMessage(ctx, health) {
+  var state = ctx.state;
+  var now = ctx.now();
+  var mark = function (good, text) { return (good ? '✅ ' : '⚠ ') + text; };
+  var lines = ['<b>[Daily Report]</b> ' + singaporeTime(now)];
+
+  lines.push(mark(health.timerRunning, health.timerRunning
+    ? 'Sheet timer: running (every ' + health.timerMinutes + ' min)'
+    : 'Sheet timer: missing. Run setup in Apps Script to start it again.'));
+
+  var fresh = !!state.lastSheetCheck && now - state.lastSheetCheck <= (2 * SETTINGS.checkEveryMinutes + 1) * 60000;
+  lines.push(mark(fresh, 'Last sheet check: ' + (state.lastSheetCheck ? timeAgo(state.lastSheetCheck, now) : 'never')));
+
+  var w = health.webhook || {};
+  if (w.checkError) {
+    lines.push(mark(false, 'Telegram: couldn\'t check (' + tplEscape(w.checkError) + ')'));
+  } else {
+    var recentError = !!w.lastErrorAt && now - w.lastErrorAt < 24 * 3600000;
+    var text = !w.url ? 'Telegram: not connected (no webhook). Run setup in Apps Script.'
+      : recentError ? 'Telegram: delivery problem ' + timeAgo(w.lastErrorAt, now) + ': ' + tplEscape(w.lastError || 'unknown')
+        : 'Telegram: connected' + (w.pending ? ', ' + w.pending + ' messages waiting' : '');
+    lines.push(mark(w.url && !recentError && (w.pending || 0) < 20, text));
+  }
+
+  var share = health.storageBytes / STORAGE_LIMIT_BYTES;
+  lines.push(mark(share < STORAGE_WARN_SHARE, 'Storage: ' + Math.ceil(health.storageBytes / 1024) + ' KB of ' +
+    (STORAGE_LIMIT_BYTES / 1024) + ' KB (' + Math.round(share * 100) + '%)' +
+    (share < STORAGE_WARN_SHARE ? '' : '. Getting full: subscribers\' saved questions may need trimming.')));
+
+  lines.push(mark(!state.lastError, 'Problems: ' + (state.lastError ? tplEscape(state.lastError) : 'none')));
+
+  lines.push('', '<b>Sheet stats</b>');
+  if (state.snapshot) lines.push.apply(lines, statsLines(sheetStats(state.snapshot)));
+  else lines.push('The sheet hasn\'t been checked yet.');
+  return lines.join('\n');
+}

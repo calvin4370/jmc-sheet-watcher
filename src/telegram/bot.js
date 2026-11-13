@@ -12,6 +12,8 @@
  *   /favourite Name (@handle), /unfavourite @handle, /favourites   (see favourites.js)
  *   /aboutme [info]  owner only: the note about them SoC LaaS gets (see aboutMe.js)
  *   /watch one-song 3, /unwatch one-song 3, /watching   (see watch.js)
+ *   /me           your bands, found by your Telegram @handle (see myBands.js)
+ *   /stats        sheet numbers: bands, completion, most-needed roles (see stats.js)
  *   /help
  * Plain messages from the owner and approved subscribers are answered by SoC LaaS
  * (assistant.js); subscribers have a daily limit.
@@ -19,6 +21,7 @@
 
 /** Button labels for each alert switch in /settings. */
 var ALERT_LABELS = {
+  myBands: '🎸 My bands',
   bands: 'Band alerts',
   bandAdded: 'New bands',
   bandRemoved: 'Removed bands',
@@ -37,6 +40,7 @@ var ALERT_LABELS = {
 
 /** Button rows in /settings. */
 var SETTINGS_LAYOUT = [
+  ['myBands'],
   ['bands'],
   ['bandAdded', 'bandRemoved'],
   ['members', 'substitutions'],
@@ -89,6 +93,8 @@ function helpText(ctx, chatId) {
     '/watch one-song 3 – get every update for a band\n' +
     '/unwatch one-song 3 – stop watching a band\n' +
     '/watching – see the bands you watch\n' +
+    '/me – your bands, found by your Telegram @handle\n' +
+    '/stats – bands, completion and most-needed roles\n' +
     '/myid – show your chat ID' +
     (isOwner(ctx, chatId)
       ? '\n/subscribers – see and manage subscribers' +
@@ -122,8 +128,10 @@ function handleMessage(message, ctx) {
   }
   if (command === 'start') {
     startCommand(message, chatId, ctx);
+    rememberUsername(ctx.state.subscribers[chatId], message.from);
     return;
   }
+  rememberUsername(ctx.state.subscribers[chatId], message.from);
 
   // The owner's plain (non-command) messages go to SoC LaaS (see assistant.js).
   var text = String(message.text || '').trim();
@@ -173,6 +181,12 @@ function handleMessage(message, ctx) {
       return;
     case 'unwatch':
       unwatchCommand(ctx, sub, chatId, text.slice(match[0].length));
+      return;
+    case 'me':
+      botSend(ctx, chatId, myBandsMessage(ctx.state.snapshot, sub), withCloseButton(null, message.message_id));
+      return;
+    case 'stats':
+      botSend(ctx, chatId, statsMessage(ctx.state.snapshot), withCloseButton(null, message.message_id));
       return;
     case 'watching': {
       var watched = watchingMessage(sub.watching);
