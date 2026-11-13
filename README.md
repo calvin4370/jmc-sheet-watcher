@@ -123,7 +123,7 @@ Other people subscribe by sending `/start` to the bot; you get an Approve/Reject
 - `sheet/`: reading the sheet. `sheetsApi.js` (Google Sheets API, GET only, read-only scope), `parseSignups.js` / `parsePlayerFinder.js` (rows into band and player records), `cellChecks.js` (clear, open slot or unclear cell).
 - `changes/`: `diff.js` decides what changed between two snapshots; `detectChanges.js` validates, parses, then baselines or diffs.
 - `notify/`: `notifications.js` makes one message per change from its template; `alerts.js` applies a subscriber's alert switches.
-- `llm/`: `llm.js` (SoC LaaS calls with retries, rewrites of unclear-cell and [Other Change] messages, and their checks); `assistant.js` (the owner's plain messages answered from the live sheet as [SoC LaaS Response]).
+- `llm/`: `llm.js` (SoC LaaS calls with retries, rewrites of unclear-cell and [Other Change] messages, and their checks); `assistant.js` (the owner's plain messages answered as [SoC LaaS Response]; SoC LaaS looks up only what it needs with tools).
 - `telegram/`: `telegram.js` (Bot API client; the token never appears in errors); `bot.js` (commands and buttons: `/start` with owner approval, `/settings`, `/stop`, `/myid`, `/subscribers`).
 - `app/`: `main.js` (Apps Script entry points: `setup`, `doPost` webhook, `tick` sheet timer, `webhookStatus`, `checkSheetNow`, `resetBaseline`, `stopWatcher`); `watcher.js` (each bot message once, sheet checks, alerts once per subscriber); `state.js` (snapshot, subscribers, sent-message IDs and conversation memory in Script Properties).
 - `shared/util.js`: small helpers used everywhere.

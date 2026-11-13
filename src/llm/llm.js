@@ -268,18 +268,36 @@ function llmComplete(config, systemPrompt, userContent, http, sleep) {
 function createLlmChat(deps) {
   var config = deps.config || {};
   if (!SETTINGS.llm.enabled || !config.baseUrl || !config.apiKey || !config.model) return null;
-  return function (messages) { return llmChat(config, messages, deps.http, deps.sleep); };
+  /** chat(messages, tools?, toolChoice?) -> the reply message ({ content, tool_calls }). */
+  return function (messages, tools, toolChoice) {
+    return llmChatMessage(config, messages, tools, toolChoice, deps.http, deps.sleep);
+  };
 }
 
 /** One chat completion with retries. Returns the text. */
 function llmChat(config, messages, http, sleep) {
+  var message = llmChatMessage(config, messages, null, null, http, sleep);
+  if (typeof message.content !== 'string') throw new Error('LLM response has no message content');
+  return message.content;
+}
+
+/**
+ * One chat completion with retries, optionally offering tools (OpenAI format).
+ * Returns the reply message: { role, content, tool_calls? }.
+ */
+function llmChatMessage(config, messages, tools, toolChoice, http, sleep) {
   var url = config.baseUrl.replace(/\/+$/, '') + '/chat/completions';
-  var payload = JSON.stringify({
+  var body = {
     model: config.model,
     messages: messages,
     temperature: 0.2,
     max_tokens: 1500
-  });
+  };
+  if (tools && tools.length) {
+    body.tools = tools;
+    body.tool_choice = toolChoice || 'auto';
+  }
+  var payload = JSON.stringify(body);
   return withRetries(function () {
     var res = http(url, {
       method: 'post',
@@ -289,11 +307,12 @@ function llmChat(config, messages, http, sleep) {
     });
     if (res.status === 429 || res.status >= 500) throw retryableError('LLM HTTP ' + res.status);
     if (res.status >= 400) throw new Error('LLM HTTP ' + res.status);
-    var body = JSON.parse(res.body);
-    var content = body && body.choices && body.choices[0] && body.choices[0].message &&
-      body.choices[0].message.content;
-    if (typeof content !== 'string') throw new Error('LLM response has no message content');
-    return content;
+    var parsed = JSON.parse(res.body);
+    var message = parsed && parsed.choices && parsed.choices[0] && parsed.choices[0].message;
+    if (!message || (typeof message.content !== 'string' && !(message.tool_calls && message.tool_calls.length))) {
+      throw new Error('LLM response has no message content');
+    }
+    return message;
   }, SETTINGS.llm.retries, SETTINGS.llm.retryBaseDelayMs, sleep);
 }
 

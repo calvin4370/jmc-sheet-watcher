@@ -6,13 +6,15 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-13-expandable-boxes',
+  id: '2026-11-13-tools-and-new-player-emoji',
   notes: [
-    'Long text now sits in expandable boxes that show the first few lines with a "show more" toggle: ' +
-      'Instruments, Intro and Note to POC in Player Finder messages, the band Description, and the ' +
-      'changed values in [Other Change] messages.',
-    'Band messages now show the full Description (no longer cut at 100 characters). It stays compact ' +
-      'because the box is collapsed until you tap it.',
-    'When boxed text changes, the box shows the old text struck out, an arrow, then the new text in bold.'
+    'Questions to SoC LaaS no longer send it the whole sheet. It now looks up only what it needs ' +
+      '(the band list, one band, Player Finder, one player, or where a person appears), using a ' +
+      'fresh read of the sheet.',
+    'While it works you will see "Called tool: …" messages after "Thinking…", one per lookup. ' +
+      '"Thinking…" disappears when the answer arrives; the tool messages stay.',
+    'Band Update messages mark someone filling a previously empty slot with 🆕, e.g. ' +
+      '"Bass: 🆕 Name (@handle)" (roles, subs, Other instruments and a first POC).',
+    'Swaps are marked with 🔄, e.g. "Drums: 🔄 Old (@old) → New (@new)" (old struck out, new in bold).'
   ]
 };

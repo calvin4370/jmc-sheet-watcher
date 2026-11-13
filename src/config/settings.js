@@ -39,6 +39,7 @@ var SETTINGS = {
     enabled: true,
     footer: '(Written by SOC LaaS API)', // last line of every LLM-written message
     maxCallsPerRun: 25,        // after this many calls in one run, use template messages
+    maxToolRounds: 6,          // [SoC LaaS Response]: most tool-calling rounds per question
     retries: 3,                // attempts per call, with exponential backoff
     retryBaseDelayMs: 1000     // 1s, 2s, 4s…
   },
