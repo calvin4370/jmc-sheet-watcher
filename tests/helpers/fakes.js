@@ -48,11 +48,11 @@ function fakeCtx({ state = g.emptyState(), api = fakeApi(), owner = '100', sheet
 let nextUpdate = 1;
 const msg = (chatId, text, from = {}) => ({
   update_id: nextUpdate++,
-  message: { chat: { id: Number(chatId), type: 'private' }, from: { first_name: 'User' + chatId, ...from }, text }
+  message: { message_id: 1000 + nextUpdate, chat: { id: Number(chatId), type: 'private' }, from: { first_name: 'User' + chatId, ...from }, text }
 });
-const tap = (chatId, data, messageText = '') => ({
+const tap = (chatId, data, messageText = '', replyMarkup = undefined) => ({
   update_id: nextUpdate++,
-  callback_query: { id: 'cq' + nextUpdate, data, from: { id: Number(chatId) }, message: { message_id: 55, chat: { id: Number(chatId) }, text: messageText } }
+  callback_query: { id: 'cq' + nextUpdate, data, from: { id: Number(chatId) }, message: { message_id: 55, chat: { id: Number(chatId) }, text: messageText, reply_markup: replyMarkup } }
 });
 
 module.exports = { fakeApi, fakeCtx, msg, tap };

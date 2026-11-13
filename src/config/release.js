@@ -6,13 +6,15 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-13-favourites',
+  id: '2026-11-14-close-buttons',
   notes: [
-    'New: favourite players. Send /favourite Name (@handle) to add someone, /favourites to see your ' +
-      'list (with remove buttons), and /unfavourite @handle to remove one. Every approved subscriber ' +
-      'has their own list. Handles are matched ignoring capital letters.',
-    'When a favourite joins, leaves or is swapped in a band, or their Player Finder entry changes, ' +
-      'you also get "⭐ One of your favourite players has an update: Name (@handle)" as a reply to that update.',
-    'Favourites override your /settings: you get their updates even if that alert type is switched off.'
+    'New: a ✖ Close button on /favourites, /settings, /help, /myid and /subscribers. It deletes ' +
+      'the bot\'s reply and your command, to keep the chat tidy.',
+    'Notices like this one ([Bot Updated], [Watcher Problem], [Watcher Recovered]) now have a ' +
+      '✖ Dismiss button that deletes the notice.',
+    'Telegram only lets bots delete messages from the last 48 hours, so Close and Dismiss ' +
+      'don\'t work on older messages. Lists and menus sent before this update have no Close button.',
+    'SoC LaaS no longer replies with just "I don\'t know". It says what it checked and what it ' +
+      'needs, e.g. your name or @handle when you ask about "me".'
   ]
 };

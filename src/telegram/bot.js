@@ -50,8 +50,8 @@ function botSend(ctx, chatId, html, replyMarkup) {
 }
 
 /** Sends without failing the caller (e.g. the person blocked the bot). */
-function botTrySend(ctx, chatId, html) {
-  try { botSend(ctx, chatId, html); } catch (e) { ctx.log('Could not message chat ' + chatId + ': ' + e.message); }
+function botTrySend(ctx, chatId, html, replyMarkup) {
+  try { botSend(ctx, chatId, html, replyMarkup); } catch (e) { ctx.log('Could not message chat ' + chatId + ': ' + e.message); }
 }
 
 function isOwner(ctx, chatId) {
@@ -98,7 +98,7 @@ function handleMessage(message, ctx) {
   var command = match ? match[1].toLowerCase() : '';
 
   if (command === 'myid') {
-    botSend(ctx, chatId, 'Your chat ID is <code>' + chatId + '</code>.');
+    botSend(ctx, chatId, 'Your chat ID is <code>' + chatId + '</code>.', withCloseButton(null, message.message_id));
     return;
   }
   if (!ctx.ownerChatId) {
@@ -127,14 +127,14 @@ function handleMessage(message, ctx) {
 
   switch (command) {
     case 'settings':
-      botSend(ctx, chatId, SETTINGS_TEXT, settingsKeyboard(resolveAlerts(sub.alerts)));
+      botSend(ctx, chatId, SETTINGS_TEXT, withCloseButton(settingsKeyboard(resolveAlerts(sub.alerts)), message.message_id));
       return;
     case 'stop':
       sub.status = 'stopped';
       botSend(ctx, chatId, 'Alerts stopped. Send /start to turn them back on.');
       return;
     case 'subscribers':
-      if (isOwner(ctx, chatId)) { subscribersCommand(chatId, ctx); return; }
+      if (isOwner(ctx, chatId)) { subscribersCommand(chatId, message.message_id, ctx); return; }
       break;
     case 'favourite':
     case 'favorite':
@@ -147,11 +147,12 @@ function handleMessage(message, ctx) {
     case 'favourites':
     case 'favorites': {
       var list = favouritesMessage(sub.favourites);
-      botSend(ctx, chatId, list.text, list.replyMarkup);
+      botSend(ctx, chatId, list.text, withCloseButton(list.replyMarkup, message.message_id));
       return;
     }
   }
-  botSend(ctx, chatId, helpText(ctx, chatId));
+  // /help gets a Close button; the help shown for an unknown command doesn't.
+  botSend(ctx, chatId, helpText(ctx, chatId), command === 'help' ? withCloseButton(null, message.message_id) : null);
 }
 
 function favouriteCommand(sub, chatId, args, ctx) {
@@ -225,14 +226,63 @@ function startCommand(message, chatId, ctx) {
   });
 }
 
+/*
+ * Close button: deletes the bot's message and the command that asked for it, to keep
+ * the chat tidy. The command's message ID travels in the button ('close:<id>').
+ * Used on /favourites, /settings, /help, /myid and /subscribers. Notices the bot sends
+ * on its own ([Bot Updated], [Watcher Problem], [Watcher Recovered]) get a Dismiss
+ * button instead ('close:' with no command), which deletes only the notice.
+ */
+var CLOSE_ACTION = 'close';
+
+/** Adds a Close row under a message's buttons (or as its only button). */
+function withCloseButton(replyMarkup, commandMessageId) {
+  var rows = replyMarkup && replyMarkup.inline_keyboard ? replyMarkup.inline_keyboard.slice() : [];
+  rows.push([{ text: '✖ Close', callback_data: CLOSE_ACTION + ':' + (commandMessageId || '') }]);
+  return { inline_keyboard: rows };
+}
+
+/** A single Dismiss button, for notices the bot sends on its own. */
+function dismissButton() {
+  return { inline_keyboard: [[{ text: '✖ Dismiss', callback_data: CLOSE_ACTION + ':' }]] };
+}
+
+/** The command message ID stored in a message's Close button: '' if empty, null if there's no button. */
+function closeButtonTarget(message) {
+  var rows = (message && message.reply_markup && message.reply_markup.inline_keyboard) || [];
+  var data = null;
+  rows.forEach(function (row) {
+    row.forEach(function (b) { if (String(b.callback_data || '').indexOf(CLOSE_ACTION + ':') === 0) data = b.callback_data; });
+  });
+  return data === null ? null : data.slice(CLOSE_ACTION.length + 1);
+}
+
+/**
+ * Deletes the bot's message and the command message. Telegram only lets bots delete
+ * messages less than 48 hours old; returns the button-tap answer.
+ */
+function closeMessages(ctx, chatId, botMessageId, commandMessageId) {
+  var ok = true;
+  [botMessageId, Number(commandMessageId)].forEach(function (id) {
+    if (!id) return;
+    try {
+      ctx.api.call('deleteMessage', { chat_id: chatId, message_id: id });
+    } catch (e) {
+      ok = false;
+      ctx.log('Could not delete a message: ' + e.message);
+    }
+  });
+  return ok ? '' : 'Telegram only lets bots delete messages from the last 48 hours.';
+}
+
 function botTrySendOwner(ctx, html, replyMarkup) {
   try { botSend(ctx, ctx.ownerChatId, html, replyMarkup); } catch (e) { ctx.log('Could not message the owner: ' + e.message); }
 }
 
-function subscribersCommand(chatId, ctx) {
+function subscribersCommand(chatId, commandMessageId, ctx) {
   var subs = Object.keys(ctx.state.subscribers).sort().map(function (id) { return ctx.state.subscribers[id]; });
   if (!subs.length) {
-    botSend(ctx, chatId, '<b>[Subscribers]</b>\nNo subscribers yet.');
+    botSend(ctx, chatId, '<b>[Subscribers]</b>\nNo subscribers yet.', withCloseButton(null, commandMessageId));
     return;
   }
   var lines = ['<b>[Subscribers]</b>'];
@@ -248,7 +298,7 @@ function subscribersCommand(chatId, ctx) {
       buttons.push([{ text: '🗑 Remove ' + s.name, callback_data: 'remove:' + s.chatId }]);
     }
   });
-  botSend(ctx, chatId, lines.join('\n'), buttons.length ? { inline_keyboard: buttons } : null);
+  botSend(ctx, chatId, lines.join('\n'), withCloseButton({ inline_keyboard: buttons }, commandMessageId));
 }
 
 var OWNER_ACTIONS = {
@@ -278,7 +328,7 @@ function handleCallback(cq, ctx) {
         ctx.api.call('editMessageReplyMarkup', {
           chat_id: chatId,
           message_id: cq.message.message_id,
-          reply_markup: settingsKeyboard(resolveAlerts(sub.alerts))
+          reply_markup: withCloseButton(settingsKeyboard(resolveAlerts(sub.alerts)), closeButtonTarget(cq.message))
         });
       }
     } else if (action === 'unfav') {
@@ -293,9 +343,11 @@ function handleCallback(cq, ctx) {
           message_id: cq.message.message_id,
           text: updated.text,
           parse_mode: 'HTML',
-          reply_markup: updated.replyMarkup || { inline_keyboard: [] }
+          reply_markup: withCloseButton(updated.replyMarkup, closeButtonTarget(cq.message))
         });
       }
+    } else if (action === CLOSE_ACTION) {
+      answer = closeMessages(ctx, chatId, cq.message && cq.message.message_id, arg);
     } else if (OWNER_ACTIONS[action]) {
       var target = ctx.state.subscribers[arg];
       if (!isOwner(ctx, chatId)) answer = 'Only the owner can do that.';
@@ -308,12 +360,15 @@ function handleCallback(cq, ctx) {
         answer = act.note;
         if (changed) botTrySend(ctx, target.chatId, act.tell);
         if (cq.message) {
+          // A /subscribers list keeps its Close button; a [Subscriber Request] has none.
+          var closeTarget = closeButtonTarget(cq.message);
           try {
             ctx.api.call('editMessageText', {
               chat_id: chatId,
               message_id: cq.message.message_id,
               text: tplEscape(cq.message.text || '') + '\n\n' + act.note + ': ' + tplEscape(target.name),
-              parse_mode: 'HTML'
+              parse_mode: 'HTML',
+              reply_markup: closeTarget === null ? { inline_keyboard: [] } : withCloseButton(null, closeTarget)
             });
           } catch (e) { ctx.log('Could not update the owner\'s message: ' + e.message); }
         }

@@ -64,7 +64,8 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
   assert.equal(opening.at(-1).content, 'who is the POC of band 1?');
   assert.doesNotMatch(JSON.stringify(opening), /@kim|@lee|@oli|need keys/);
   assert.match(opening[0].content, /Use the tools to look up what you need/);
-  assert.match(opening[0].content, /say that you don't know/);
+  assert.match(opening[0].content, /Never reply with just "I don't know"/);
+  assert.match(opening[0].content, /if they ask about "me" or "I", ask for their\nname or @handle/);
   assert.deepEqual(calls[0].tools.map((t) => t.function.name),
     ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person']);
   assert.equal(calls[0].toolChoice, 'auto');

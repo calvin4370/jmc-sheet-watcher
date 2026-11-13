@@ -95,10 +95,11 @@ test('/stop and /start again', () => {
 test('/subscribers lists people with manage buttons, for the owner only', () => {
   const ctx = fakeCtx();
   handle(ctx, msg(OWNER, '/start'), msg(7, '/start', { first_name: 'Amy' }), msg(8, '/start', { first_name: 'Bo' }), tap(OWNER, 'approve:8'));
-  handle(ctx, msg(OWNER, '/subscribers'));
+  const subsCommand = msg(OWNER, '/subscribers');
+  handle(ctx, subsCommand);
   const list = ctx.api.sent(OWNER).at(-1).params;
   assert.equal(list.text, '<b>[Subscribers]</b>\nUser100 — approved (you)\nAmy — pending\nBo — approved');
-  assert.deepEqual(list.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ['approve:7', 'reject:7', 'remove:8']);
+  assert.deepEqual(list.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ['approve:7', 'reject:7', 'remove:8', 'close:' + subsCommand.message.message_id]);
 
   handle(ctx, msg(8, '/subscribers'));
   assert.match(lastText(ctx.api, 8), /^<b>\[Help\]<\/b>/);
@@ -107,6 +108,56 @@ test('/subscribers lists people with manage buttons, for the owner only', () => 
   handle(ctx, tap(OWNER, 'remove:8'));
   assert.equal(ctx.state.subscribers['8'].status, 'removed');
   assert.match(lastText(ctx.api, 8), /turned off your alerts/);
+});
+
+const closeData = (params) => (params.reply_markup ? params.reply_markup.inline_keyboard.flat() : [])
+  .filter((b) => b.callback_data.startsWith('close:')).map((b) => b.callback_data);
+
+test('/settings, /help, /myid and /subscribers have a Close button for themselves and the command', () => {
+  const ctx = fakeCtx();
+  handle(ctx, msg(OWNER, '/start'), msg(7, '/start'), tap(OWNER, 'approve:7'));
+  for (const [chat, text] of [[7, '/settings'], [7, '/help'], [7, '/myid'], [OWNER, '/subscribers']]) {
+    const command = msg(chat, text);
+    handle(ctx, command);
+    assert.deepEqual(closeData(ctx.api.sent(chat).at(-1).params), ['close:' + command.message.message_id], text);
+  }
+  // Help shown for an unknown command, and other replies, have no Close button.
+  handle(ctx, msg(7, '/nonsense'));
+  assert.deepEqual(closeData(ctx.api.sent(7).at(-1).params), []);
+  handle(ctx, msg(7, '/favourite @lee'));
+  assert.deepEqual(closeData(ctx.api.sent(7).at(-1).params), []);
+});
+
+test('toggling a setting keeps the Close button pointing at the /settings command', () => {
+  const ctx = fakeCtx();
+  handle(ctx, msg(OWNER, '/start'));
+  const command = msg(OWNER, '/settings');
+  handle(ctx, command);
+  const menu = ctx.api.sent(OWNER).at(-1).params;
+  handle(ctx, tap(OWNER, 'toggle:songs', '', menu.reply_markup));
+  const edited = ctx.api.calls.filter((c) => c.method === 'editMessageReplyMarkup').at(-1).params;
+  assert.deepEqual(closeData(edited), ['close:' + command.message.message_id]);
+});
+
+test('approving from /subscribers keeps Close; a [Subscriber Request] just loses its buttons', () => {
+  const ctx = fakeCtx();
+  handle(ctx, msg(OWNER, '/start'), msg(7, '/start'), msg(8, '/start'));
+  const request = ctx.api.sent(OWNER).at(-1).params;
+  handle(ctx, tap(OWNER, 'approve:7', 'request', request.reply_markup));
+  let edited = ctx.api.calls.filter((c) => c.method === 'editMessageText').at(-1).params;
+  assert.deepEqual(edited.reply_markup, { inline_keyboard: [] });
+
+  const command = msg(OWNER, '/subscribers');
+  handle(ctx, command);
+  handle(ctx, tap(OWNER, 'approve:8', 'list', ctx.api.sent(OWNER).at(-1).params.reply_markup));
+  edited = ctx.api.calls.filter((c) => c.method === 'editMessageText').at(-1).params;
+  assert.deepEqual(closeData(edited), ['close:' + command.message.message_id]);
+});
+
+test('Dismiss (close with no command) deletes only the notice', () => {
+  const ctx = fakeCtx();
+  handle(ctx, tap(OWNER, 'close:'));
+  assert.deepEqual(ctx.api.calls.filter((c) => c.method === 'deleteMessage').map((c) => c.params), [{ chat_id: OWNER, message_id: 55 }]);
 });
 
 test('group chats are ignored', () => {

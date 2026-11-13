@@ -128,6 +128,9 @@ test('a missing header pauses alerts and tells the owner once; recovery is annou
   setSheet(edited());
   g.runSheetCheck(ctx);
   assert.equal(alertTexts(api, OWNER).filter((t) => t === '<b>[Watcher Recovered]</b>').length, 1);
+  for (const c of api.sent(OWNER).filter((c) => /^<b>\[Watcher (Problem|Recovered)\]/.test(c.params.text))) {
+    assert.equal(c.params.reply_markup.inline_keyboard[0][0].text, '✖ Dismiss');
+  }
   assert.deepEqual(alertTexts(api, '7'), ['<b>[Band Update]</b>', '<b>[Player Finder: Update]</b>']);
 });
 
@@ -192,6 +195,7 @@ test('after an update the owner is told what changed, once; a failed notice is r
   assert.equal(g.announceRelease(ctx), true);
   const notice = api.sent(OWNER).at(-1).params;
   assert.match(notice.text, /^<b>\[Bot Updated\]<\/b>\nWhat's new:\n• /);
+  assert.deepEqual(notice.reply_markup, { inline_keyboard: [[{ text: '✖ Dismiss', callback_data: 'close:' }]] });
   assert.equal(notice.text.split('\n• ').length - 1, g.RELEASE.notes.length);
   assert.equal(ctx.state.lastAnnouncedRelease, g.RELEASE.id);
 

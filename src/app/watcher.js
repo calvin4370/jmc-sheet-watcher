@@ -82,7 +82,7 @@ function announceRelease(ctx) {
   var text = '<b>[Bot Updated]</b>\nWhat\'s new:\n' +
     RELEASE.notes.map(function (n) { return '• ' + tplEscape(n); }).join('\n');
   try {
-    botSend(ctx, ctx.ownerChatId, text);
+    botSend(ctx, ctx.ownerChatId, text, dismissButton());
   } catch (e) {
     ctx.log('Could not send the update notice: ' + e.message);
     return false;
@@ -131,7 +131,7 @@ function reportProblem(ctx, message) {
   ctx.log(message);
   if (message === ctx.state.lastError) return;
   ctx.state.lastError = message;
-  if (ctx.ownerChatId) botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Problem]</b>\n' + tplEscape(message));
+  if (ctx.ownerChatId) botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Problem]</b>\n' + tplEscape(message), dismissButton());
 }
 
 /**
@@ -158,7 +158,7 @@ function runSheetCheck(ctx) {
 
   if (state.lastError) {
     state.lastError = '';
-    if (ctx.ownerChatId) botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Recovered]</b>\nThe watcher is working again.');
+    if (ctx.ownerChatId) botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Recovered]</b>\nThe watcher is working again.', dismissButton());
   }
 
   if (result.baseline) {

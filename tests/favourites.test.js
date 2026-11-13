@@ -42,11 +42,16 @@ test('/favourite, /favourites and /unfavourite', () => {
   say(ctx, FAN, '/favourites');
   const list = api.sent(FAN).at(-1).params;
   assert.equal(list.text, '<b>[Your Favourites]</b>\n⭐ @OLI_x\n⭐ @pat\n\nTap a button to remove one.');
-  assert.deepEqual(list.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ['unfav:oli_x', 'unfav:pat']);
+  const buttons = list.reply_markup.inline_keyboard.flat().map((b) => b.callback_data);
+  assert.deepEqual(buttons.slice(0, 2), ['unfav:oli_x', 'unfav:pat']);
+  assert.match(buttons[2], /^close:\d+$/);
 
-  g.handleUpdate(tap(FAN, 'unfav:oli_x'), ctx);
+  g.handleUpdate(tap(FAN, 'unfav:oli_x', '', list.reply_markup), ctx);
   assert.deepEqual(ctx.state.subscribers[FAN].favourites, ['@pat']);
-  assert.match(api.calls.filter((c) => c.method === 'editMessageText').at(-1).params.text, /⭐ @pat\n/);
+  const edited = api.calls.filter((c) => c.method === 'editMessageText').at(-1).params;
+  assert.match(edited.text, /⭐ @pat\n/);
+  assert.deepEqual(edited.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ['unfav:pat', buttons[2]],
+    'Close still deletes the original /favourites message');
 
   say(ctx, FAN, '/unfavourite @PAT');
   assert.equal(texts(api, FAN).at(-1), 'Removed @PAT from your favourites.');
@@ -57,6 +62,33 @@ test('/favourite, /favourites and /unfavourite', () => {
   // Not available before approval.
   say(ctx, '9', '/favourite @oli_x');
   assert.match(texts(api, '9').at(-1), /Send \/start/);
+});
+
+test('Close deletes the /favourites list and the /favourites command', () => {
+  const { ctx, api } = setup();
+  const command = msg(FAN, '/favourites');
+  g.handleUpdate(command, ctx);
+  const list = api.sent(FAN).at(-1).params;
+  assert.match(list.text, /No favourites yet/);
+  const close = list.reply_markup.inline_keyboard.flat().find((b) => b.text === '✖ Close');
+  assert.equal(close.callback_data, 'close:' + command.message.message_id);
+
+  api.calls.length = 0;
+  g.handleUpdate(tap(FAN, close.callback_data, '', list.reply_markup), ctx);
+  assert.deepEqual(api.calls.filter((c) => c.method === 'deleteMessage').map((c) => c.params),
+    [{ chat_id: FAN, message_id: 55 }, { chat_id: FAN, message_id: command.message.message_id }]);
+  assert.equal(api.calls.at(-1).params.text, '', 'no pop-up when it worked');
+});
+
+test('Close on a message older than 48 hours explains why nothing happened', () => {
+  const { ctx, api } = setup();
+  api.call = (method, params) => {
+    api.calls.push({ method, params });
+    if (method === 'deleteMessage') { const e = new Error('message can\'t be deleted'); e.status = 400; throw e; }
+    return {};
+  };
+  g.handleUpdate(tap(FAN, 'close:1234'), ctx);
+  assert.match(api.calls.at(-1).params.text, /48 hours/);
 });
 
 test('a favourite joining a band: the update, then a ⭐ reply to it', () => {
