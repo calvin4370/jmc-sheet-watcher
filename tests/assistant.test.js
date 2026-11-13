@@ -45,7 +45,6 @@ function setup({ replies, readSheets } = {}) {
     return queue && queue.length ? queue.shift() : 'Kim is the POC.';
   };
   if (readSheets) ctx.readSheets = readSheets;
-  ctx.saveAnswer = (at, answer, chatId) => g.rememberAssistantAnswer(ctx.state, at, answer, chatId);
   ctx.readState = () => ctx.state;
   ctx.updateState = (fn) => fn(ctx.state);
   const runDeferred = () => { ctx.deferred.splice(0).forEach((t) => t(ctx)); };
@@ -160,19 +159,22 @@ test('the answer is plain text: HTML is escaped and Markdown bold removed', () =
   assert.equal(ctx.api.sent(OWNER).at(-1).params.text, '<b>[SoC LaaS Response]</b>\nBands: &lt;none&gt; &amp; more');
 });
 
-test('it remembers the last 5 questions with their answers, and the last 5 alerts', () => {
+test('it remembers the last 5 questions (not its answers), and the last 5 alerts', () => {
   const { ctx, calls, runDeferred } = setup({ replies: (messages) => 'answer to ' + messages.at(-1).content });
+  // An answer stored by an older version is dropped, and never sent to SoC LaaS.
+  ctx.state.memory.ownerMessages = [{ text: 'question 0', at: 1, answer: 'You have no favourite players.' }];
   for (let i = 1; i <= 7; i++) {
     ctx.time += 1000;
     g.handleUpdate(msg(OWNER, 'question ' + i), ctx);
     runDeferred();
   }
-  assert.deepEqual(ctx.state.memory.ownerMessages.map((m) => [m.text, m.answer]),
-    [3, 4, 5, 6, 7].map((i) => ['question ' + i, 'answer to question ' + i]));
-  assert.deepEqual(calls.at(-1).messages.slice(1).map((m) => [m.role, m.content]), [
-    ...[2, 3, 4, 5, 6].flatMap((i) => [['user', 'question ' + i], ['assistant', 'answer to question ' + i]]),
-    ['user', 'question 7']
-  ]);
+  assert.deepEqual(ctx.state.memory.ownerMessages.map((m) => Object.keys(m).sort().join() + ':' + m.text),
+    [3, 4, 5, 6, 7].map((i) => 'at,text:question ' + i));
+  const last = calls.at(-1).messages;
+  assert.deepEqual(last.slice(1), [{ role: 'user', content: 'question 7' }], 'only the new question is a chat turn');
+  assert.match(last[0].content, /Their earlier questions, oldest first\. Use them only to understand a follow-up question\n/);
+  assert.match(last[0].content, /look everything up again:\n- question 2\n- question 3\n- question 4\n- question 5\n- question 6/);
+  assert.doesNotMatch(JSON.stringify(calls), /answer to question|no favourite players/);
 
   for (let i = 1; i <= 6; i++) g.rememberAlert(ctx.state, '<b>[Band Update]</b>\nalert ' + i, i);
   assert.deepEqual(ctx.state.memory.alerts.map((a) => a.text), [2, 3, 4, 5, 6].map((i) => '[Band Update]\nalert ' + i));
@@ -253,10 +255,12 @@ test('subscribers can ask: their own name and memory, no owner extras, and quest
   assert.equal(ctx.api.sent(7).at(-1).params.text,
     '<b>[SoC LaaS Response]</b>\nLee is in band 1.\n\n<i>19 of 20 questions left today.</i>');
 
-  // Their own conversation is remembered for follow-ups.
+  // Their own earlier questions are remembered for follow-ups (not the answers).
   g.handleUpdate(msg(7, 'and band 2?'), ctx);
   runDeferred();
-  assert.deepEqual(calls[1].messages.slice(1).map((m) => m.content), ['am I in band 1?', 'Lee is in band 1.', 'and band 2?']);
+  assert.deepEqual(calls[1].messages.slice(1).map((m) => m.content), ['and band 2?']);
+  assert.match(calls[1].messages[0].content, /look everything up again:\n- am I in band 1\?$/);
+  assert.doesNotMatch(calls[1].messages[0].content, /Lee is in band 1/);
   assert.equal(ctx.state.memory.ownerMessages.length, 1, 'the owner\'s memory is untouched');
 });
 

@@ -224,22 +224,6 @@ function withState(fn) {
   return deferred;
 }
 
-/** Stores a SoC LaaS answer in the conversation memory (takes the lock briefly). */
-function saveAssistantAnswer(questionAt, answer, chatId) {
-  var lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) {
-    console.log('Could not store the SoC LaaS answer: the watcher was busy.');
-    return;
-  }
-  try {
-    var state = appsScriptLoadState();
-    rememberAssistantAnswer(state, questionAt, answer, chatId);
-    appsScriptSaveState(state);
-  } finally {
-    lock.releaseLock();
-  }
-}
-
 /** For deferred work: loads the saved state under the lock, changes it, and saves it. */
 function updateStoredState(change) {
   var lock = LockService.getScriptLock();
@@ -288,7 +272,6 @@ function appsScriptContext(state) {
     rewrite: createLlmRewriter({ config: appsScriptLlmConfig(), http: appsScriptCountedLlmHttp, sleep: sleep, log: log }),
     chat: chat,
     assistantAvailable: !!chat,
-    saveAnswer: saveAssistantAnswer,
     updateState: updateStoredState,
     readState: appsScriptLoadState,
     setTimerMinutes: function (minutes) { appsScriptSetTimerMinutes(minutes, false); },

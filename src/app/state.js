@@ -21,7 +21,7 @@ function emptyState() {
     pendingActions: {},  // SoC LaaS actions waiting for ✅ Yes (llm/actionTools.js)
     settling: null,      // { since, checks, same, hash } while waiting for edits to settle (watcher.js)
     memory: {            // context for the owner's SoC LaaS questions (assistant.js)
-      ownerMessages: [], // the owner's last 5 plain messages, each with SoC LaaS's answer
+      ownerMessages: [], // the owner's last 5 questions to SoC LaaS (not its answers)
       alerts: [],        // the last 5 alerts sent to the owner
       aboutMe: ''        // the owner's /aboutme note (aboutMe.js)
     }
@@ -38,7 +38,7 @@ function normaliseState(state) {
 /**
  * Subscriber: { chatId, name, status, alerts, favourites, watching, questions, questionsToday, sent, since }
  * favourites: @handles (favourites.js); watching: band IDs like 'one-song#3' (watch.js)
- * questions: their last 5 SoC LaaS questions with answers (assistant.js; the owner's are in memory)
+ * questions: their last 5 SoC LaaS questions, not the answers (assistant.js; the owner's are in memory)
  * questionsToday: { day: 'YYYY-MM-DD', count } for the daily SoC LaaS limit
  * status: 'pending' | 'approved' | 'rejected' | 'stopped' | 'removed'
  * alerts: the subscriber's own switches (missing ones use SETTINGS.defaultAlerts)

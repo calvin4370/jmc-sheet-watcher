@@ -11,8 +11,10 @@
  *  - Each tool call is shown to the owner as "Called tool: …" after "Thinking…".
  *    "Thinking…" is deleted when the answer is sent; the tool-call messages stay.
  *  - The LLM must answer only from the sheet data, and say when it doesn't know.
- *  - It also gets the person's last 5 questions with SoC LaaS's answers (the conversation
- *    so far) and their Telegram name and @handle (so "me" questions work).
+ *  - It also gets the person's last 5 questions (for follow-ups like "and band 4?") and
+ *    their Telegram name and @handle (so "me" questions work). Owner decision: SoC LaaS's
+ *    answers are NOT remembered: given its old answers, it repeated them instead of looking
+ *    again (e.g. "You have no favourite players" after one was added).
  *  - The owner's questions also get the last 5 alerts sent to the owner and their
  *    /aboutme note.
  *  - SoC LaaS can also run the bot's commands for the person (llm/actionTools.js), e.g.
@@ -246,7 +248,9 @@ function askAssistant(ctx, chatId, question, from, questionsLeft) {
   var previousQuestions = history.slice();
   var recentAlerts = owner ? memory.alerts.slice() : [];
   var questionAt = ctx.now();
+  // Only the questions are kept (answers stored by older versions are dropped).
   setQuestionHistory(ctx.state, chatId, owner, history
+    .map(function (m) { return { text: m.text, at: m.at }; })
     .concat([{ text: question.slice(0, 1000), at: questionAt }])
     .slice(-ASSISTANT_MEMORY_SIZE));
 
@@ -277,7 +281,7 @@ function askAssistant(ctx, chatId, question, from, questionsLeft) {
 
 /**
  * Runs without the lock.
- * later: { api, readSheets(), chat(messages, tools, toolChoice) -> message, now(), log(), saveAnswer? }
+ * later: { api, readSheets(), chat(messages, tools, toolChoice) -> message, now(), log(), readState(), updateState(fn) }
  */
 function answerOwnerQuestion(later, job) {
   var reply;
@@ -302,13 +306,6 @@ function answerOwnerQuestion(later, job) {
       if (job.questionsLeft !== null && job.questionsLeft !== undefined) {
         reply += '\n\n<i>' + job.questionsLeft + ' of ' + SETTINGS.llm.subscriberDailyQuestions +
           ' questions left today.</i>';
-      }
-      if (later.saveAnswer) {
-        try {
-          later.saveAnswer(job.questionAt, answer, job.chatId);
-        } catch (e) {
-          later.log('Could not store the SoC LaaS answer: ' + e.message);
-        }
       }
     }
   } catch (e) {
@@ -374,8 +371,9 @@ function assistantMessages(job, now) {
     'You answer questions from ' + (job.isOwner ? 'the owner' : 'a subscriber') +
       ' of a Telegram bot that watches the JMM band signup sheet',
     '(a university music club\'s concert signups). The time now is ' + new Date(now).toISOString() + '.',
-    'Use the tools to look up what you need in the sheet. Answer ONLY from tool results and the',
-    'conversation. Never guess or make anything up.',
+    'Use the tools to look up what you need. Answer ONLY from tool results. Never guess or make anything up.',
+    'The sheet and the person\'s settings, favourites and watched bands change all the time, so look them up',
+    'with the tools for every question, never from memory.',
     'Never reply with just "I don\'t know". If you can\'t answer, say briefly why: what you looked',
     'up and found, or what is missing. Then say what would let you answer, e.g. a name, @handle or',
     'band number.',
@@ -416,25 +414,14 @@ function assistantMessages(job, now) {
     system.push('', 'The last alert messages the bot sent the owner (oldest first):');
     job.recentAlerts.forEach(function (a, i) { system.push((i + 1) + '. ' + a.text); });
   }
-  // The conversation so far: the person's last messages and SoC LaaS's answers.
-  var messages = [{ role: 'system', content: system.join('\n') }];
-  job.previousQuestions.forEach(function (m) {
-    messages.push({ role: 'user', content: m.text });
-    if (m.answer) messages.push({ role: 'assistant', content: m.answer });
-  });
-  messages.push({ role: 'user', content: job.question });
-  return messages;
-}
-
-/** Stores SoC LaaS's answer next to the question it answered (kept with the last 5). */
-function rememberAssistantAnswer(state, questionAt, answer, chatId) {
-  var sub = chatId !== undefined ? state.subscribers[String(chatId)] : null;
-  var lists = [state.memory.ownerMessages, (sub && sub.questions) || []];
-  lists.forEach(function (list) {
-    list.forEach(function (m) {
-      if (m.at === questionAt) m.answer = String(answer).slice(0, 1500);
-    });
-  });
+  // Their earlier questions (not SoC LaaS's answers: see the top of this file), as
+  // background for follow-up questions.
+  if (job.previousQuestions.length) {
+    system.push('', 'Their earlier questions, oldest first. Use them only to understand a follow-up question',
+      '(e.g. what "that band" means). Answer only their latest message, and look everything up again:');
+    job.previousQuestions.forEach(function (m) { system.push('- ' + m.text); });
+  }
+  return [{ role: 'system', content: system.join('\n') }, { role: 'user', content: job.question }];
 }
 
 /** Non-empty cells in the band's other columns (Description, YouTube Link…), by header. */
