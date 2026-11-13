@@ -10,7 +10,8 @@
  *    "Thinking…" is deleted when the answer is sent; the tool-call messages stay.
  *  - The LLM must answer only from the sheet data, and say when it doesn't know.
  *  - It also gets the owner's last 5 messages with SoC LaaS's answers (the conversation
- *    so far) and the last 5 alerts sent to the owner.
+ *    so far), the last 5 alerts sent to the owner, the owner's Telegram name and @handle
+ *    (so "me" questions work), and their /aboutme note (aboutMe.js).
  *  - Reply: plain text under a bold [SoC LaaS Response] header.
  *
  * The LLM calls run after the lock is released (ctx.defer), so they never hold up
@@ -200,7 +201,7 @@ function describeToolCall(name, args) {
 /* ---------------- Asking and answering ---------------- */
 
 /** Called by the bot (under the lock): remember the question, show "Thinking…", defer the work. */
-function askAssistant(ctx, chatId, question) {
+function askAssistant(ctx, chatId, question, from) {
   var memory = ctx.state.memory;
   var previousQuestions = memory.ownerMessages.slice();
   var recentAlerts = memory.alerts.slice();
@@ -223,6 +224,8 @@ function askAssistant(ctx, chatId, question) {
       questionAt: questionAt,
       previousQuestions: previousQuestions,
       recentAlerts: recentAlerts,
+      owner: from ? telegramUserLabel(from) : '',
+      aboutMe: memory.aboutMe || '',
       storedSnapshot: storedSnapshot,
       thinkingMessageId: thinking && thinking.message_id
     });
@@ -324,8 +327,7 @@ function assistantMessages(job, now) {
     'conversation. Never guess or make anything up.',
     'Never reply with just "I don\'t know". If you can\'t answer, say briefly why: what you looked',
     'up and found, or what is missing. Then say what would let you answer, e.g. a name, @handle or',
-    'band number. You don\'t know who the owner is, so if they ask about "me" or "I", ask for their',
-    'name or @handle.',
+    'band number.',
     'Be concise. Plain text only: no Markdown, no HTML.',
     'Copy names and @handles exactly as they appear in tool results.',
     '',
@@ -335,6 +337,16 @@ function assistantMessages(job, now) {
     'instruments, and other columns such as Description and YouTube Link. Player Finder lists people',
     'looking for a band.'
   ];
+  if (job.owner) {
+    system.push('', 'The owner is ' + job.owner + ' on Telegram. "Me" or "I" means them: look them up',
+      'with find_person by @handle, then by name. Their sheet entries may use a different name.');
+  } else {
+    system.push('', 'You don\'t know who the owner is, so if they ask about "me" or "I", ask for their',
+      'name or @handle.');
+  }
+  if (job.aboutMe) {
+    system.push('', 'What the owner has told you about themselves (their /aboutme note):', job.aboutMe);
+  }
   if (job.recentAlerts.length) {
     system.push('', 'The last alert messages the bot sent the owner (oldest first):');
     job.recentAlerts.forEach(function (a, i) { system.push((i + 1) + '. ' + a.text); });

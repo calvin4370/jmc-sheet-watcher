@@ -222,6 +222,19 @@ function saveAssistantAnswer(questionAt, answer) {
   }
 }
 
+/** For deferred work: loads the saved state under the lock, changes it, and saves it. */
+function updateStoredState(change) {
+  var lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) throw new Error('the watcher was busy');
+  try {
+    var state = appsScriptLoadState();
+    change(state);
+    appsScriptSaveState(state);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
 /** Runs deferred work without the lock, so slow LLM calls don't block anything. */
 function runDeferred(tasks) {
   if (!tasks || !tasks.length) return;
@@ -258,6 +271,7 @@ function appsScriptContext(state) {
     chat: chat,
     assistantAvailable: !!chat,
     saveAnswer: saveAssistantAnswer,
+    updateState: updateStoredState,
     now: function () { return Date.now(); },
     sleep: sleep,
     log: log

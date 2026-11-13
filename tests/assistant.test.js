@@ -65,7 +65,8 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
   assert.doesNotMatch(JSON.stringify(opening), /@kim|@lee|@oli|need keys/);
   assert.match(opening[0].content, /Use the tools to look up what you need/);
   assert.match(opening[0].content, /Never reply with just "I don't know"/);
-  assert.match(opening[0].content, /if they ask about "me" or "I", ask for their\nname or @handle/);
+  assert.match(opening[0].content, /The owner is User100 on Telegram\. "Me" or "I" means them/);
+  assert.doesNotMatch(opening[0].content, /aboutme note/, 'no note yet');
   assert.deepEqual(calls[0].tools.map((t) => t.function.name),
     ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person']);
   assert.equal(calls[0].toolChoice, 'auto');

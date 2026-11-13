@@ -6,15 +6,14 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-14-close-buttons',
+  id: '2026-11-14-aboutme',
   notes: [
-    'New: a ✖ Close button on /favourites, /settings, /help, /myid and /subscribers. It deletes ' +
-      'the bot\'s reply and your command, to keep the chat tidy.',
-    'Notices like this one ([Bot Updated], [Watcher Problem], [Watcher Recovered]) now have a ' +
-      '✖ Dismiss button that deletes the notice.',
-    'Telegram only lets bots delete messages from the last 48 hours, so Close and Dismiss ' +
-      'don\'t work on older messages. Lists and menus sent before this update have no Close button.',
-    'SoC LaaS no longer replies with just "I don\'t know". It says what it checked and what it ' +
-      'needs, e.g. your name or @handle when you ask about "me".'
+    'SoC LaaS now knows your Telegram name and @handle, so questions like "am I in any band?" work.',
+    'New: /aboutme. Send /aboutme followed by anything about you (e.g. /aboutme I play bass) and ' +
+      'SoC LaaS rewrites your note to fit it in. Newer info wins, so you can also correct or remove ' +
+      'things. The note is sent with every question you ask.',
+    'Send /aboutme on its own to see your note, with Clear and Close buttons.',
+    'The note is limited to 500 characters. Up to 600 is saved with a warning; a rewrite over 600 ' +
+      'isn\'t saved and your old note is kept.'
   ]
 };

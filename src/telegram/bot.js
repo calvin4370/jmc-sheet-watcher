@@ -9,6 +9,7 @@
  *   /myid         show your chat ID (used once, to set TELEGRAM_OWNER_CHAT_ID)
  *   /subscribers  owner only: list subscribers with Approve / Reject / Remove buttons
  *   /favourite Name (@handle), /unfavourite @handle, /favourites   (see favourites.js)
+ *   /aboutme [info]  owner only: the note about them SoC LaaS gets (see aboutMe.js)
  *   /help
  * Plain messages from the owner are answered by SoC LaaS (assistant.js).
  */
@@ -83,7 +84,10 @@ function helpText(ctx, chatId) {
     '/unfavourite @handle – remove a favourite\n' +
     '/favourites – see your favourites\n' +
     '/myid – show your chat ID' +
-    (isOwner(ctx, chatId) ? '\n/subscribers – see and manage subscribers' : '');
+    (isOwner(ctx, chatId)
+      ? '\n/subscribers – see and manage subscribers' +
+        '\n/aboutme – what SoC LaaS knows about you (add to it: /aboutme I play bass)'
+      : '');
 }
 
 function handleUpdate(update, ctx) {
@@ -113,7 +117,7 @@ function handleMessage(message, ctx) {
   // The owner's plain (non-command) messages go to SoC LaaS (see assistant.js).
   var text = String(message.text || '').trim();
   if (!command && text && isOwner(ctx, chatId) && ctx.defer && ctx.assistantAvailable) {
-    askAssistant(ctx, chatId, text);
+    askAssistant(ctx, chatId, text, message.from);
     return;
   }
 
@@ -135,6 +139,9 @@ function handleMessage(message, ctx) {
       return;
     case 'subscribers':
       if (isOwner(ctx, chatId)) { subscribersCommand(chatId, message.message_id, ctx); return; }
+      break;
+    case 'aboutme':
+      if (isOwner(ctx, chatId)) { aboutMeCommand(ctx, chatId, text.slice(match[0].length), message.message_id); return; }
       break;
     case 'favourite':
     case 'favorite':
@@ -346,6 +353,8 @@ function handleCallback(cq, ctx) {
           reply_markup: withCloseButton(updated.replyMarkup, closeButtonTarget(cq.message))
         });
       }
+    } else if (action === 'aboutme' && arg === 'clear') {
+      answer = isOwner(ctx, chatId) ? clearAboutMe(ctx, chatId, cq) : 'Only the owner can do that.';
     } else if (action === CLOSE_ACTION) {
       answer = closeMessages(ctx, chatId, cq.message && cq.message.message_id, arg);
     } else if (OWNER_ACTIONS[action]) {
