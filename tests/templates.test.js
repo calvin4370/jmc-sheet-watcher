@@ -111,8 +111,12 @@ test('player messages list every field exactly as written, with no LLM', () => {
   assert.equal(added.text, exact);
   assert.equal(added.llmWritten, false);
 
+  // Removed: name and handle on one line, both exactly as written.
   const [removed] = messagesFor(run({ players: [p] }, { players: [] }));
-  assert.equal(removed.text, exact.replace('New Player', 'Removed'));
+  assert.equal(removed.text,
+    '<b>[Player Finder: Removed]</b>\n\nName: Oli  ( @oli)\nInstruments:\nDrums (3)\n  Bass (1)\nIntro: hi  there');
+  const [noHandle] = messagesFor(run({ players: [{ sn: 2, name: 'Pat' }] }, { players: [] }));
+  assert.equal(noHandle.text, '<b>[Player Finder: Removed]</b>\n\nName: Pat');
 
   const long = 'x'.repeat(500);
   const [edited] = messagesFor(run({ players: [p] }, { players: [{ ...p, intro: long }] }));

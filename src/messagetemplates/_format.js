@@ -165,9 +165,10 @@ var PLAYER_FIELD_LABELS = [
  * Every non-blank Player Finder field, exactly as written. When both versions are
  * given, changed fields are shown as ~~old~~ → **new**.
  */
-function tplPlayerFields(before, after) {
+function tplPlayerFields(before, after, skipFields) {
   var lines = [];
   PLAYER_FIELD_LABELS.forEach(function (f) {
+    if (skipFields && skipFields.indexOf(f[0]) >= 0) return;
     var oldValue = before ? before[f[0]] : '';
     var newValue = after ? after[f[0]] : '';
     var shown;
