@@ -100,27 +100,35 @@ test('one message per change, band messages before Player Finder', () => {
     ['bands', 'band_changed'], ['bands', 'band_added'], ['playerFinder', 'player_changed']
   ]);
   assert.equal(ns[2].text,
-    '<b>[Player Finder: Update]</b>\n\nName: Oli\nTelegram Handle: @oli\nInstruments: <s>Drums (3)</s> → <b>Drums (4)</b>');
+    '<b>[Player Finder: Update]</b>\n\nName: Oli (@oli)\nInstruments: <s>Drums (3)</s> → <b>Drums (4)</b>');
 });
 
-test('player messages list every field exactly as written, with no LLM', () => {
+test('player messages list every field exactly as written, name and handle on one line, with no LLM', () => {
   const p = { sn: 1, name: 'Oli ', handle: ' @oli', instruments: 'Drums (3)\n  Bass (1)', intro: 'hi  there', note: '' };
-  const exact = '<b>[Player Finder: New Player]</b>\n\nName: Oli \nTelegram Handle:  @oli\nInstruments:\nDrums (3)\n  Bass (1)\nIntro: hi  there';
+  const body = '\n\nName: Oli  ( @oli)\nInstruments:\nDrums (3)\n  Bass (1)\nIntro: hi  there';
 
   const [added] = messagesFor(run({ players: [] }, { players: [p] }), () => 'should not be used');
-  assert.equal(added.text, exact);
+  assert.equal(added.text, '<b>[Player Finder: New Player]</b>' + body);
   assert.equal(added.llmWritten, false);
 
-  // Removed: name and handle on one line, both exactly as written.
   const [removed] = messagesFor(run({ players: [p] }, { players: [] }));
-  assert.equal(removed.text,
-    '<b>[Player Finder: Removed]</b>\n\nName: Oli  ( @oli)\nInstruments:\nDrums (3)\n  Bass (1)\nIntro: hi  there');
+  assert.equal(removed.text, '<b>[Player Finder: Removed]</b>' + body);
+
   const [noHandle] = messagesFor(run({ players: [{ sn: 2, name: 'Pat' }] }, { players: [] }));
   assert.equal(noHandle.text, '<b>[Player Finder: Removed]</b>\n\nName: Pat');
+  const [noName] = messagesFor(run({ players: [] }, { players: [{ sn: 3, handle: '@quinn' }] }));
+  assert.equal(noName.text, '<b>[Player Finder: New Player]</b>\n\nName: @quinn');
 
   const long = 'x'.repeat(500);
   const [edited] = messagesFor(run({ players: [p] }, { players: [{ ...p, intro: long }] }));
-  assert.match(edited.text, new RegExp('Intro: <s>hi  there</s> → <b>' + long + '</b>$'));
+  assert.ok(edited.text.includes('\nName: Oli  ( @oli)\n'));
+  assert.ok(edited.text.endsWith('Intro: <s>hi  there</s> → <b>' + long + '</b>'));
+});
+
+test('a changed name is shown as old → new on the Name line', () => {
+  const before = { sn: 1, name: 'Oli', handle: '@oli', instruments: 'Drums (3)' };
+  const [n] = messagesFor(run({ players: [before] }, { players: [{ ...before, name: 'Oliver' }] }));
+  assert.equal(n.text, '<b>[Player Finder: Update]</b>\n\nName: <s>Oli (@oli)</s> → <b>Oliver (@oli)</b>\nInstruments: Drums (3)');
 });
 
 test('cell checks: open slots, missing @, unclear cells', () => {

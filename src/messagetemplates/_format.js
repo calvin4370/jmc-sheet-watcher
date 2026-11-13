@@ -154,21 +154,35 @@ function tplExact(value) {
 
 /** Player Finder fields, in message order. */
 var PLAYER_FIELD_LABELS = [
-  ['name', 'Name'],
-  ['handle', 'Telegram Handle'],
   ['instruments', 'Instruments'],
   ['introduction', 'Intro'],
   ['noteToPointOfContact', 'Note to POC']
 ];
 
+/** "<name> (<handle>)", both exactly as written; '' if both are blank. */
+function tplPlayerNameAndHandle(p) {
+  if (!p) return '';
+  var name = isBlank(p.name) ? '' : tplExact(p.name);
+  var handle = isBlank(p.handle) ? '' : tplExact(p.handle);
+  if (name && handle) return name + ' (' + handle + ')';
+  return name || handle;
+}
+
 /**
- * Every non-blank Player Finder field, exactly as written. When both versions are
- * given, changed fields are shown as ~~old~~ → **new**.
+ * Every non-blank Player Finder field, exactly as written, starting with
+ * "Name: <name> (<handle>)". When both versions are given, changed fields are shown
+ * as ~~old~~ → **new**.
  */
-function tplPlayerFields(before, after, skipFields) {
+function tplPlayerFields(before, after) {
   var lines = [];
+  var oldName = tplPlayerNameAndHandle(before);
+  var newName = tplPlayerNameAndHandle(after);
+  if (before && after && !(sameText(before.name, after.name) && sameText(before.handle, after.handle))) {
+    lines.push('Name: ' + tplChange(oldName, newName));
+  } else if (newName || oldName) {
+    lines.push('Name: ' + (after ? newName : oldName));
+  }
   PLAYER_FIELD_LABELS.forEach(function (f) {
-    if (skipFields && skipFields.indexOf(f[0]) >= 0) return;
     var oldValue = before ? before[f[0]] : '';
     var newValue = after ? after[f[0]] : '';
     var shown;
