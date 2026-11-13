@@ -14,8 +14,10 @@
  *  - It also gets the person's last 5 questions with SoC LaaS's answers (the conversation
  *    so far) and their Telegram name and @handle (so "me" questions work).
  *  - The owner's questions also get the last 5 alerts sent to the owner and their
- *    /aboutme note, and SoC LaaS can update that note itself (update_about_me tool,
- *    aboutMe.js) when the owner tells it something lasting about themselves.
+ *    /aboutme note.
+ *  - SoC LaaS can also run the bot's commands for the person (llm/actionTools.js), e.g.
+ *    add a favourite or update the owner's /aboutme note. Anything that changes something
+ *    needs the person to tap ✅ Yes on a confirmation message first.
  *  - Reply: plain text under a bold [SoC LaaS Response] header.
  *
  * The LLM calls run after the lock is released (ctx.defer), so they never hold up
@@ -103,22 +105,6 @@ function songTitles(b) {
     return [s.title.primary, s.title.alternate].filter(function (t) { return !isBlank(t); }).join(' / ');
   }).filter(function (t) { return t; });
 }
-
-/** Owner only: SoC LaaS saves something to the owner's /aboutme note (aboutMe.js). */
-var UPDATE_ABOUT_ME_TOOL = {
-  type: 'function',
-  function: {
-    name: 'update_about_me',
-    description: 'Save something lasting the owner told you about themselves (e.g. instruments they play, ' +
-      'their bands, their name or @handle in the sheet, preferences) to their /aboutme note. The note is ' +
-      'rewritten to fit it in; newer information wins, so this can also correct or remove things.',
-    parameters: {
-      type: 'object',
-      properties: { info: { type: 'string', description: 'The new information, in a short sentence' } },
-      required: ['info']
-    }
-  }
-};
 
 /** Runs one tool against the sheet copy. Returns a JSON-serialisable result. */
 function runAssistantTool(snapshot, name, args) {
@@ -214,7 +200,9 @@ function runAssistantTool(snapshot, name, args) {
 
 /** "get_band (band_type: two-song, number: 5)" for the "Called tool" message. */
 function describeToolCall(name, args) {
-  var parts = Object.keys(args || {}).map(function (k) { return k + ': ' + args[k]; });
+  var parts = Object.keys(args || {}).map(function (k) {
+    return k + ': ' + (args[k] !== null && typeof args[k] === 'object' ? JSON.stringify(args[k]) : args[k]);
+  });
   return name + (parts.length ? ' (' + parts.join(', ') + ')' : '');
 }
 
@@ -279,6 +267,7 @@ function askAssistant(ctx, chatId, question, from, questionsLeft) {
       previousQuestions: previousQuestions,
       recentAlerts: recentAlerts,
       person: from ? telegramUserLabel(from) : '',
+      commands: llmUnescape(helpText(ctx, chatId)).replace(/^\[Help\]\n/, ''),
       aboutMe: owner ? memory.aboutMe || '' : '',
       storedSnapshot: storedSnapshot,
       thinkingMessageId: thinking && thinking.message_id
@@ -351,8 +340,7 @@ function runAssistantConversation(later, job, snapshot) {
   var rounds = SETTINGS.llm.maxToolRounds;
   for (var round = 1; ; round++) {
     var last = round >= rounds;
-    var tools = job.isOwner ? ASSISTANT_TOOLS.concat([UPDATE_ABOUT_ME_TOOL]) : ASSISTANT_TOOLS;
-    var message = later.chat(messages, tools, last ? 'none' : 'auto');
+    var message = later.chat(messages, ASSISTANT_TOOLS.concat(actionToolDefinitions(job.isOwner)), last ? 'none' : 'auto');
     if (typeof message === 'string') return message;
     var calls = message.tool_calls || [];
     if (!calls.length || last) return message.content || '';
@@ -360,16 +348,16 @@ function runAssistantConversation(later, job, snapshot) {
     messages.push({ role: 'assistant', content: message.content || null, tool_calls: calls });
     calls.forEach(function (call) {
       var name = call['function'] && call['function'].name;
-      var args = {};
-      try { args = JSON.parse(call['function'].arguments || '{}'); } catch (e) { args = {}; }
+      var args;
+      try { args = JSON.parse(call['function'].arguments || '{}'); } catch (e) { args = undefined; }
       try {
-        botSend(later, job.chatId, '<i>' + tplEscape('Called tool: ' + describeToolCall(name, args)) + '</i>');
+        botSend(later, job.chatId, '<i>' + tplEscape('Called tool: ' + describeToolCall(name, args || {})) + '</i>');
       } catch (e) {
         later.log('Could not show a tool call: ' + e.message);
       }
-      var result = name === 'update_about_me' && job.isOwner
-        ? aboutMeTool(later, job, args)
-        : runAssistantTool(snapshot, name, args);
+      var result = isActionTool(name)
+        ? runActionTool(later, job, name, args)
+        : runAssistantTool(snapshot, name, args || {});
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     });
   }
@@ -409,13 +397,19 @@ function assistantMessages(job, now) {
     system.push('', 'You don\'t know who ' + who + ' is, so if they ask about "me" or "I", ask for their',
       'name or @handle.');
   }
+  system.push('', 'You can also run the bot\'s commands for ' + who + ' with the other tools (alert settings,',
+    'favourites, watched bands' + (job.isOwner ? ', subscribers, status, the /aboutme note' : '') + '). Use them when asked.',
+    'Lookups run straight away. Anything that changes something only sends a confirmation message with',
+    '✅ Yes / ❌ Cancel buttons to the person you\'re talking to (never anyone else) and returns status',
+    '"awaiting_confirmation": then tell them that they need to tap ✅ Yes.',
+    'Never say a change is done, saved or noted: it only happens when they tap ✅ Yes.',
+    'If a tool returns ok: false, explain the error, fix the arguments if you can, and try again.');
+  if (job.commands) system.push('', 'The bot\'s commands:', job.commands);
   if (job.isOwner) {
     system.push('', 'When the owner tells you something lasting about themselves (e.g. instruments they play,',
-      'their bands, their name or @handle in the sheet, preferences), save it with update_about_me.',
+      'their bands, their name or @handle in the sheet, preferences), offer to save it with update_about_me.',
       'Don\'t save questions, guesses, or things about other people unless the owner asks you to.',
-      'If the owner asks you to remember something, always call update_about_me.',
-      'Never say you saved, noted or will remember something unless update_about_me returned',
-      'saved: true in this conversation. When you save something, say so briefly in your answer.');
+      'If the owner asks you to remember something, always call update_about_me.');
     system.push('', 'What the owner has told you about themselves (their /aboutme note):', job.aboutMe || '(empty)');
   }
   if (job.recentAlerts.length) {

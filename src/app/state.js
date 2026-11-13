@@ -18,6 +18,7 @@ function emptyState() {
     lastSheetCheck: 0,   // ms since epoch
     lastError: '',       // last problem reported to the owner (to avoid repeats)
     lastAnnouncedRelease: '', // RELEASE.id the owner was last told about (config/release.js)
+    pendingActions: {},  // SoC LaaS actions waiting for ✅ Yes (llm/actionTools.js)
     memory: {            // context for the owner's SoC LaaS questions (assistant.js)
       ownerMessages: [], // the owner's last 5 plain messages, each with SoC LaaS's answer
       alerts: [],        // the last 5 alerts sent to the owner

@@ -43,6 +43,8 @@ function setup({ replies, readSheets } = {}) {
   };
   if (readSheets) ctx.readSheets = readSheets;
   ctx.saveAnswer = (at, answer, chatId) => g.rememberAssistantAnswer(ctx.state, at, answer, chatId);
+  ctx.readState = () => ctx.state;
+  ctx.updateState = (fn) => fn(ctx.state);
   const runDeferred = () => { ctx.deferred.splice(0).forEach((t) => t(ctx)); };
   return { ctx, calls, runDeferred };
 }
@@ -68,7 +70,10 @@ test('SoC LaaS fetches only what it needs through tools; each call is shown; Thi
   assert.match(opening[0].content, /The owner is User100 on Telegram\. "Me" or "I" means them/);
   assert.match(opening[0].content, /their \/aboutme note\):\n\(empty\)$/, 'no note yet');
   assert.deepEqual(calls[0].tools.map((t) => t.function.name),
-    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person', 'update_about_me']);
+    ['list_bands', 'get_band', 'list_player_finder', 'get_player', 'find_person',
+      'get_alert_settings', 'set_alerts', 'stop_alerts', 'list_favourites', 'add_favourite', 'remove_favourite',
+      'list_watched_bands', 'watch_band', 'unwatch_band', 'get_my_chat_id',
+      'get_status', 'list_subscribers', 'manage_subscriber', 'update_about_me', 'clear_about_me']);
   assert.equal(calls[0].toolChoice, 'auto');
 
   // The tool result went back to SoC LaaS.
@@ -278,24 +283,29 @@ test('subscribers get 20 questions a day, reset at midnight Singapore time; the 
   assert.doesNotMatch(ctx.api.sent(OWNER).at(-1).params.text, /questions left/);
 });
 
-test('SoC LaaS can update the owner\'s /aboutme note itself; the call is shown', () => {
+test('SoC LaaS can update the owner\'s /aboutme note, after the owner confirms the new note', () => {
   const { ctx, calls, runDeferred } = setup({
     replies: [
       { role: 'assistant', content: null, tool_calls: [toolCall('t1', 'update_about_me', { info: 'Plays drums' })] },
       'Plays bass.\nPlays drums.', // the note rewrite
-      'Noted that you play drums. You are not in band 1.'
+      'Tap Yes to save that you play drums. You are not in band 1.'
     ]
   });
-  ctx.updateState = (fn) => fn(ctx.state);
   g.handleUpdate(msg(OWNER, '/start'), ctx);
   ctx.state.memory.aboutMe = 'Plays bass.';
   g.handleUpdate(msg(OWNER, 'I play drums btw. am I in band 1?'), ctx);
   runDeferred();
-  assert.equal(ctx.state.memory.aboutMe, 'Plays bass.\nPlays drums.');
+  assert.equal(ctx.state.memory.aboutMe, 'Plays bass.', 'not saved before confirming');
   assert.ok(ctx.api.sent(OWNER).some((c) => c.params.text === '<i>Called tool: update_about_me (info: Plays drums)</i>'));
-  const toolResult = JSON.parse(calls[2].messages.at(-1).content);
-  assert.deepEqual(toolResult, { saved: true, note: 'Plays bass.\nPlays drums.', size: 24, limit: 500, max: 600, problem: '' });
   assert.match(calls[1].messages[1].content, /^Current note:\nPlays bass\.\n\nNew information:\nPlays drums$/);
+  const toolResult = JSON.parse(calls[2].messages.at(-1).content);
+  assert.equal(toolResult.status, 'awaiting_confirmation');
+
+  const confirm = ctx.api.sent(OWNER).find((c) => c.params.text.startsWith('<b>[Confirm]</b>')).params;
+  assert.equal(confirm.text, '<b>[Confirm]</b>\nSoC LaaS wants to: Change your /aboutme note to:\nPlays bass.\nPlays drums.\n' +
+    '<i>24/500 characters</i>');
+  g.handleUpdate(tap(OWNER, confirm.reply_markup.inline_keyboard[0][0].callback_data), ctx);
+  assert.equal(ctx.state.memory.aboutMe, 'Plays bass.\nPlays drums.');
 });
 
 test('a subscriber calling update_about_me changes nothing', () => {

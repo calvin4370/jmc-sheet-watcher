@@ -6,14 +6,12 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-15-watch-status',
+  id: '2026-11-15-llm-commands',
   notes: [
-    'SoC LaaS can now update your /aboutme note itself when you tell it something about yourself or ask ' +
-      'it to remember something. You\'ll see "Called tool: update_about_me (…)" when it does.',
-    'New: /status shows the last sheet check, any problem, subscribers, the sheet size and SoC LaaS use today.',
-    'Subscribers can now ask SoC LaaS questions too: 20 a day each (reset at midnight), with their own ' +
-      'memory of their last 5 questions. Your note, alerts and the update_about_me tool stay yours only.',
-    'New for everyone: /watch one-song 3 gets every update for that band, even if that alert type is off, ' +
-      'each followed by a 👀 reply. /unwatch one-song 3 and /watching (with remove buttons) manage the list.'
+    'SoC LaaS can now run the bot\'s commands for you: e.g. "add @oli to my favourites", "watch one-song band 3", ' +
+      '"turn off song alerts", "approve Bo", "what are my favourites?". Subscribers can use it for their own commands.',
+    'Anything that changes something first sends a [Confirm] message with ✅ Yes / ❌ Cancel. Nothing changes ' +
+      'until you tap ✅ Yes. Confirmations work once and expire after 24 hours. Lookups run straight away.',
+    'This includes your /aboutme note: SoC LaaS now asks before saving, and the confirmation shows the new note.'
   ]
 };

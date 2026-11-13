@@ -272,6 +272,7 @@ function appsScriptContext(state) {
     assistantAvailable: !!chat,
     saveAnswer: saveAssistantAnswer,
     updateState: updateStoredState,
+    readState: appsScriptLoadState,
     llmRequestsToday: appsScriptLlmRequestsToday,
     now: function () { return Date.now(); },
     sleep: sleep,

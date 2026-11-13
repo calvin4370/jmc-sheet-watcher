@@ -58,37 +58,10 @@ function watchingMessage(watching) {
 
 /** /watch <band> */
 function watchCommand(ctx, sub, chatId, args) {
-  var id = bandIdFromText(args);
-  if (!id) {
-    botSend(ctx, chatId, 'Say which band, e.g. /watch one-song 3 or /watch two-song 4.');
-    return;
-  }
-  sub.watching = sub.watching || [];
-  if (sub.watching.indexOf(id) >= 0) {
-    botSend(ctx, chatId, 'You\'re already watching ' + tplEscape(watchedBandLabel(id)) + '.');
-    return;
-  }
-  var band = null;
-  ((ctx.state.snapshot && ctx.state.snapshot.bands) || []).forEach(function (b) { if (b.id === id) band = b; });
-  if (!band) {
-    botSend(ctx, chatId, 'There\'s no ' + tplEscape(watchedBandLabel(id)) + ' in the sheet right now.');
-    return;
-  }
-  if (sub.watching.length >= MAX_WATCHED_BANDS) {
-    botSend(ctx, chatId, 'You\'re already watching ' + MAX_WATCHED_BANDS + ' bands. Remove one with /watching first.');
-    return;
-  }
-  sub.watching.push(id);
-  botSend(ctx, chatId, '👀 Now watching:\n' + tplBandLine(band).replace(/^- /, '') + '\n' +
-    'You\'ll get every update for this band, even if that alert type is off in /settings.');
+  botSend(ctx, chatId, actionWatchBand(ctx.state, sub, bandIdFromText(args)).html);
 }
 
 /** /unwatch <band> */
 function unwatchCommand(ctx, sub, chatId, args) {
-  var id = bandIdFromText(args);
-  var before = (sub.watching || []).length;
-  sub.watching = (sub.watching || []).filter(function (w) { return w !== id; });
-  botSend(ctx, chatId, id && sub.watching.length < before
-    ? 'Stopped watching ' + tplEscape(watchedBandLabel(id)) + '.'
-    : 'You aren\'t watching that band. See your list with /watching.');
+  botSend(ctx, chatId, actionUnwatchBand(sub, bandIdFromText(args)).html);
 }

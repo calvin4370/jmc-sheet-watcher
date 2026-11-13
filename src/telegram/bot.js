@@ -157,8 +157,7 @@ function handleMessage(message, ctx) {
       botSend(ctx, chatId, SETTINGS_TEXT, withCloseButton(settingsKeyboard(resolveAlerts(sub.alerts)), message.message_id));
       return;
     case 'stop':
-      sub.status = 'stopped';
-      botSend(ctx, chatId, 'Alerts stopped. Send /start to turn them back on.');
+      botSend(ctx, chatId, actionStopAlerts(sub).html);
       return;
     case 'subscribers':
       if (isOwner(ctx, chatId)) { subscribersCommand(chatId, message.message_id, ctx); return; }
@@ -200,34 +199,11 @@ function handleMessage(message, ctx) {
 }
 
 function favouriteCommand(sub, chatId, args, ctx) {
-  var handle = handleFromText(args);
-  if (!handle) {
-    botSend(ctx, chatId, 'Please include their Telegram handle, e.g. /favourite Oli (@oli).');
-    return;
-  }
-  sub.favourites = sub.favourites || [];
-  var key = handleKey(handle);
-  if (sub.favourites.some(function (h) { return handleKey(h) === key; })) {
-    botSend(ctx, chatId, tplEscape(handle) + ' is already one of your favourites.');
-    return;
-  }
-  if (sub.favourites.length >= MAX_FAVOURITES) {
-    botSend(ctx, chatId, 'You already have ' + MAX_FAVOURITES + ' favourites. Remove one with /favourites first.');
-    return;
-  }
-  sub.favourites.push(handle);
-  botSend(ctx, chatId, '⭐ Added ' + tplEscape(handle) + ' to your favourites. You\'ll get a ⭐ message whenever ' +
-    'they join, leave or are swapped in a band, or their Player Finder entry changes.');
+  botSend(ctx, chatId, actionAddFavourite(sub, args).html);
 }
 
 function unfavouriteCommand(sub, chatId, args, ctx) {
-  var handle = handleFromText(args);
-  var key = handleKey(handle);
-  var before = (sub.favourites || []).length;
-  sub.favourites = (sub.favourites || []).filter(function (h) { return handleKey(h) !== key; });
-  botSend(ctx, chatId, handle && sub.favourites.length < before
-    ? 'Removed ' + tplEscape(handle) + ' from your favourites.'
-    : 'That handle isn\'t in your favourites. See them with /favourites.');
+  botSend(ctx, chatId, actionRemoveFavourite(sub, args).html);
 }
 
 function startCommand(message, chatId, ctx) {
@@ -319,6 +295,11 @@ function closeMessages(ctx, chatId, botMessageId, commandMessageId) {
   return ok ? '' : 'Telegram only lets bots delete messages from the last 48 hours.';
 }
 
+/** Sends an action's messages for other people (e.g. telling a subscriber they're approved). */
+function sendActionNotices(ctx, result) {
+  (result.notify || []).forEach(function (n) { botTrySend(ctx, n.chatId, n.html); });
+}
+
 function botTrySendOwner(ctx, html, replyMarkup) {
   try { botSend(ctx, ctx.ownerChatId, html, replyMarkup); } catch (e) { ctx.log('Could not message the owner: ' + e.message); }
 }
@@ -344,13 +325,6 @@ function subscribersCommand(chatId, commandMessageId, ctx) {
   });
   botSend(ctx, chatId, lines.join('\n'), withCloseButton({ inline_keyboard: buttons }, commandMessageId));
 }
-
-var OWNER_ACTIONS = {
-  approve: { status: 'approved', note: '✅ Approved',
-    tell: 'You\'re approved! You\'ll now get alerts. Use /settings to choose which ones.' },
-  reject: { status: 'rejected', note: '❌ Rejected', tell: 'Sorry, your request was declined.' },
-  remove: { status: 'removed', note: '🗑 Removed', tell: 'The owner has turned off your alerts.' }
-};
 
 function handleCallback(cq, ctx) {
   var chatId = String(cq.message && cq.message.chat ? cq.message.chat.id : (cq.from || {}).id);
@@ -405,21 +379,19 @@ function handleCallback(cq, ctx) {
           reply_markup: withCloseButton(list.replyMarkup, closeButtonTarget(cq.message))
         });
       }
+    } else if (action === 'act') {
+      answer = confirmPendingAction(ctx, chatId, cq, arg);
     } else if (action === 'aboutme' && arg === 'clear') {
       answer = isOwner(ctx, chatId) ? clearAboutMe(ctx, chatId, cq) : 'Only the owner can do that.';
     } else if (action === CLOSE_ACTION) {
       answer = closeMessages(ctx, chatId, cq.message && cq.message.message_id, arg);
     } else if (OWNER_ACTIONS[action]) {
-      var target = ctx.state.subscribers[arg];
-      if (!isOwner(ctx, chatId)) answer = 'Only the owner can do that.';
-      else if (!target) answer = 'Unknown subscriber.';
-      else if (isOwner(ctx, arg)) answer = 'You can\'t do that to yourself.';
+      var done = isOwner(ctx, chatId) ? actionManageSubscriber(ctx.state, ctx.ownerChatId, arg, action) : null;
+      if (!done) answer = 'Only the owner can do that.';
+      else if (!done.ok) answer = llmUnescape(done.html);
       else {
-        var act = OWNER_ACTIONS[action];
-        var changed = target.status !== act.status;
-        target.status = act.status;
-        answer = act.note;
-        if (changed) botTrySend(ctx, target.chatId, act.tell);
+        answer = done.changed ? OWNER_ACTIONS[action].note : llmUnescape(done.html);
+        sendActionNotices(ctx, done);
         if (cq.message) {
           // A /subscribers list keeps its Close button; a [Subscriber Request] has none.
           var closeTarget = closeButtonTarget(cq.message);
@@ -427,7 +399,7 @@ function handleCallback(cq, ctx) {
             ctx.api.call('editMessageText', {
               chat_id: chatId,
               message_id: cq.message.message_id,
-              text: tplEscape(cq.message.text || '') + '\n\n' + act.note + ': ' + tplEscape(target.name),
+              text: tplEscape(cq.message.text || '') + '\n\n' + done.html,
               parse_mode: 'HTML',
               reply_markup: closeTarget === null ? { inline_keyboard: [] } : withCloseButton(null, closeTarget)
             });
