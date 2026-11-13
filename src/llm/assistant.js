@@ -38,7 +38,18 @@ var ASSISTANT_TOOLS = [
     function: {
       name: 'list_bands',
       description: 'Overview of every band on both signup sheets: band type, number, song titles, ' +
-        'Complete?, point of contact, and which roles are still empty. Use get_band for full details.',
+        'Complete?, point of contact, and which roles are still empty. Use get_band for full details of ' +
+        'one band, or get_all_bands for full details of every band.',
+      parameters: { type: 'object', properties: {} }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_all_bands',
+      description: 'Full details of every band on both signup sheets in one call (the same as get_band for ' +
+        'each band). Use this instead of calling get_band many times, e.g. to look through members, ' +
+        'substitutions or descriptions across bands.',
       parameters: { type: 'object', properties: {} }
     }
   },
@@ -118,6 +129,28 @@ function songTitles(b) {
   }).filter(function (t) { return t; });
 }
 
+/** Full details of one band, for get_band and get_all_bands. */
+function bandDetails(band) {
+  var out = {
+    bandType: band.bandType,
+    number: band.number,
+    sheetRows: band.sourceRows,
+    songs: band.songs,
+    complete: band.completion,
+    pointOfContact: trimmedPerson(band.pointOfContact),
+    members: band.members.map(function (m) {
+      return { role: ROLE_LABELS[m.role] || m.role, name: m.name.trim(), handle: m.handle.trim() };
+    }),
+    substitutions: band.substitutions.map(function (s) {
+      return { slot: s.slot, direction: s.direction, name: s.name.trim(), handle: s.handle.trim() };
+    }),
+    otherInstruments: band.otherInstruments.map(trimmedPerson)
+  };
+  var extra = bandOtherColumns(band);
+  if (Object.keys(extra).length) out.otherColumns = extra;
+  return out;
+}
+
 /** Runs one tool against the sheet copy. Returns a JSON-serialisable result. */
 function runAssistantTool(snapshot, name, args) {
   args = args || {};
@@ -149,25 +182,11 @@ function runAssistantTool(snapshot, name, args) {
         if (!band && b.bandType === args.band_type && b.number === number) band = b;
       });
       if (!band) return { error: 'No ' + args.band_type + ' band numbered ' + number + '.' };
-      var out = {
-        bandType: band.bandType,
-        number: band.number,
-        sheetRows: band.sourceRows,
-        songs: band.songs,
-        complete: band.completion,
-        pointOfContact: trimmedPerson(band.pointOfContact),
-        members: band.members.map(function (m) {
-          return { role: ROLE_LABELS[m.role] || m.role, name: m.name.trim(), handle: m.handle.trim() };
-        }),
-        substitutions: band.substitutions.map(function (s) {
-          return { slot: s.slot, direction: s.direction, name: s.name.trim(), handle: s.handle.trim() };
-        }),
-        otherInstruments: band.otherInstruments.map(trimmedPerson)
-      };
-      var extra = bandOtherColumns(band);
-      if (Object.keys(extra).length) out.otherColumns = extra;
-      return out;
+      return bandDetails(band);
     }
+
+    case 'get_all_bands':
+      return snapshot.bands.map(bandDetails);
 
     case 'list_player_finder':
       return snapshot.players.map(function (p) {

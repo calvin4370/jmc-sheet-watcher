@@ -6,9 +6,9 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-15-tidy-tool-messages',
+  id: '2026-11-15-get-all-bands',
   notes: [
-    'Tidier SoC LaaS chats: the "Thinking…" and "Called tool: …" messages are now deleted once the answer ' +
-      'is sent. [Confirm] messages stay until you tap Yes or Cancel.'
+    'SoC LaaS can now read every band in full in one go (get_all_bands), instead of opening bands one ' +
+      'at a time, so questions across many bands are faster.'
   ]
 };
