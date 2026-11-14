@@ -119,10 +119,10 @@ function trimmedPerson(p) {
   return p ? { name: String(p.name).trim(), handle: String(p.handle).trim() } : null;
 }
 
-/** "One-song band #3 (🎵 夜バンド - 夜の歌)", for find_person results. */
+/** "Two-song band #3 (🎵 夜バンド - 夜の歌, 🎵 Blue Sky)", for find_person results. */
 function bandLabelText(b) {
   var songs = bandSongsText(b);
-  return bandHeading(b) + (songs ? ' (🎵 ' + songs + ')' : '');
+  return bandHeading(b) + (songs ? ' (' + songs + ')' : '');
 }
 
 function songTitles(b) {
@@ -459,9 +459,9 @@ function assistantMessages(job, now) {
     'same tool with the same arguments twice.',
     'Copy names and @handles exactly as they appear in tool results.',
     'Never mention a band by its number alone. Bands in tool results have a "display" text: its heading',
-    '(e.g. "Two-song band #11"), a 🎵 line with its songs (artist - title), then one member per line.',
+    '(e.g. "Two-song band #11"), one 🎵 line per song (artist - title), then one member per line.',
     'When you mention a band, copy its display text as it is, with a blank line between bands. If you',
-    'list more than 5 bands, copy just the first two lines (heading and 🎵 songs) of each.',
+    'list more than 5 bands, copy just the heading and the 🎵 song lines of each.',
     '',
     'About the sheet: bands come from two signup sheets, one-song and two-song bands, each numbered.',
     'Each band has songs (first-row and second-row text, e.g. original language and English), a point of',

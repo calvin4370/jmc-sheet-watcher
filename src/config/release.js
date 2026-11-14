@@ -6,11 +6,9 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-15-band-cards',
+  id: '2026-11-15-song-lines',
   notes: [
-    'Bands are no longer shown by number alone: /me, /watching and SoC LaaS answers show each band\'s ' +
-      'songs (artist - title) and its members, one per line. /watching buttons show the first song too.',
-    'SoC LaaS answers are tidier: no more working-out or repeated lists, and it doesn\'t fetch the same ' +
-      'data twice for one question.'
+    'Band cards in /me, /watching and SoC LaaS answers now show each song on its own 🎵 line, so you can ' +
+      'tell a two-song band\'s songs apart.'
   ]
 };

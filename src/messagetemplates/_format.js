@@ -84,7 +84,8 @@ function tplBandLine(band) {
  * (/me, /watching, SoC LaaS answers), show which band it is, not just its number:
  *
  *   Two-song band #11
- *   🎵 夜バンド - 夜の歌, 青バンド - 青い空      (first sheet row: artist - title)
+ *   🎵 夜バンド - 夜の歌                       (one line per song, first sheet row:
+ *   🎵 青バンド - 青い空                        artist - title)
  *   Lead Vocals: Amy (@amy)
  *   Drums: Lee (@lee)
  *   POC: Amy (@amy)
@@ -113,21 +114,25 @@ function bandHeading(band) {
   return (band.bandType === 'one-song' ? 'One-song band' : 'Two-song band') + (band.number ? ' #' + band.number : '');
 }
 
-/** "夜バンド - 夜の歌, 青バンド - 青い空" (first sheet row; '' if there are no songs). */
-function bandSongsText(band) {
+/** ['夜バンド - 夜の歌', '青バンド - 青い空']: each named song, first sheet row. */
+function bandSongList(band) {
   return band.songs.map(function (song) {
     var title = plainFirstRow(song.title);
     var artist = plainFirstRow(song.artist);
     if (!title && !artist) return '';
     return (artist ? artist + ' - ' : '') + (title || '(untitled)');
-  }).filter(function (s) { return s; }).join(', ');
+  }).filter(function (s) { return s; });
 }
 
-/** The card as plain-text lines. compact: heading and songs only. */
+/** "🎵 夜バンド - 夜の歌, 🎵 青バンド - 青い空" on one line ('' if there are no songs). */
+function bandSongsText(band) {
+  return bandSongList(band).map(function (s) { return '🎵 ' + s; }).join(', ');
+}
+
+/** The card as plain-text lines: one 🎵 line per song. compact: heading and songs only. */
 function bandCardLines(band, compact) {
   var lines = [bandHeading(band)];
-  var songs = bandSongsText(band);
-  if (songs) lines.push('🎵 ' + songs);
+  bandSongList(band).forEach(function (s) { lines.push('🎵 ' + s); });
   if (compact) return lines;
   var people = [];
   band.members.forEach(function (m) { people.push((ROLE_LABELS[m.role] || m.role) + ': ' + plainPerson(m)); });
@@ -151,7 +156,7 @@ function tplBandCard(band, compact, prefix) {
 
 /** Short label for a button: "2-song #11 · 夜バンド - 夜の歌" (first song), at most 40 characters. */
 function bandButtonLabel(band) {
-  var first = bandSongsText({ songs: band.songs.slice(0, 1) });
+  var first = bandSongList(band)[0] || '';
   var label = (band.bandType === 'one-song' ? '1-song' : '2-song') + ' #' + (band.number || '?') + (first ? ' · ' + first : '');
   var chars = Array.from(label);
   return chars.length > 40 ? chars.slice(0, 39).join('') + '…' : label;
