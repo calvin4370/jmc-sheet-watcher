@@ -84,21 +84,14 @@ function tplBandLine(band) {
  * (/me, /watching, SoC LaaS answers), show which band it is, not just its number:
  *
  *   Two-song band #11
- *   🎵 夜バンド - 夜の歌                       (one line per song, first sheet row:
- *   🎵 青バンド - 青い空                        artist - title)
+ *   🎵 夜バンド - 夜の歌 (Night Band - Night Song)   (one line per song: first sheet row as
+ *   🎵 青バンド - 青い空                              artist - title, second row in brackets)
  *   Lead Vocals: Amy (@amy)
  *   Drums: Lee (@lee)
  *   POC: Amy (@amy)
  *
  * Built as plain text (SoC LaaS copies it), and HTML-escaped for Telegram by tplBandCard.
  */
-
-/** One cell's first-row text (the second row if the first is blank), on one line. */
-function plainFirstRow(text) {
-  if (!text) return '';
-  var pick = tplClean(text.primary) || tplClean(text.alternate);
-  return pick.replace(/\s*\n\s*/g, ' / ');
-}
 
 /** "Name (@handle)" as plain text, exactly as written (trimmed, one line). */
 function plainPerson(person) {
@@ -114,13 +107,26 @@ function bandHeading(band) {
   return (band.bandType === 'one-song' ? 'One-song band' : 'Two-song band') + (band.number ? ' #' + band.number : '');
 }
 
-/** ['夜バンド - 夜の歌', '青バンド - 青い空']: each named song, first sheet row. */
-function bandSongList(band) {
+/** "artist - title" from one sheet row ('' if both are blank). */
+function plainSongRow(artist, title) {
+  artist = tplClean(artist).replace(/\s*\n\s*/g, ' / ');
+  title = tplClean(title).replace(/\s*\n\s*/g, ' / ');
+  if (!title && !artist) return '';
+  return (artist ? artist + ' - ' : '') + (title || '(untitled)');
+}
+
+/**
+ * Each named song: "夜バンド - 夜の歌 (Night Band - Night Song)": first sheet row, then the
+ * second row in brackets if it's filled in and different. firstRowOnly: no brackets.
+ */
+function bandSongList(band, firstRowOnly) {
   return band.songs.map(function (song) {
-    var title = plainFirstRow(song.title);
-    var artist = plainFirstRow(song.artist);
-    if (!title && !artist) return '';
-    return (artist ? artist + ' - ' : '') + (title || '(untitled)');
+    var title = song.title || {};
+    var artist = song.artist || {};
+    var first = plainSongRow(artist.primary, title.primary);
+    var second = plainSongRow(artist.alternate, title.alternate);
+    if (!first) return second;
+    return second && second !== first && !firstRowOnly ? first + ' (' + second + ')' : first;
   }).filter(function (s) { return s; });
 }
 
@@ -156,7 +162,7 @@ function tplBandCard(band, compact, prefix) {
 
 /** Short label for a button: "2-song #11 · 夜バンド - 夜の歌" (first song), at most 40 characters. */
 function bandButtonLabel(band) {
-  var first = bandSongList(band)[0] || '';
+  var first = bandSongList(band, true)[0] || '';
   var label = (band.bandType === 'one-song' ? '1-song' : '2-song') + ' #' + (band.number || '?') + (first ? ' · ' + first : '');
   var chars = Array.from(label);
   return chars.length > 40 ? chars.slice(0, 39).join('') + '…' : label;

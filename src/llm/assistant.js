@@ -338,7 +338,10 @@ function answerOwnerQuestion(later, job) {
       reply = ASSISTANT_HEADER + '\n' + tplEscape('Sorry, I couldn\'t read the sheet: ' + readError);
     } else {
       var answer = cleanAssistantAnswer(runAssistantConversation(later, job, snapshot));
-      reply = ASSISTANT_HEADER + '\n' + tplEscape(note + answer);
+      var body = tplEscape(note + answer);
+      // Leave room for the description boxes and the "questions left" line.
+      if (body.length > TELEGRAM_MAX_LENGTH - 300) body = body.slice(0, TELEGRAM_MAX_LENGTH - 301) + '…';
+      reply = ASSISTANT_HEADER + '\n' + boxDescriptions(body, snapshot);
       if (job.questionsLeft !== null && job.questionsLeft !== undefined) {
         reply += '\n\n<i>' + job.questionsLeft + ' of ' + SETTINGS.llm.subscriberDailyQuestions +
           ' questions left today.</i>';
@@ -357,6 +360,28 @@ function answerOwnerQuestion(later, job) {
   }
   // Tidy up: "Thinking…" and the "Called tool: …" messages go once the answer is sent.
   deleteChatMessages(later, job.chatId, [job.thinkingMessageId].concat(job.toolMessageIds || []));
+}
+
+/**
+ * Puts band descriptions in SoC LaaS answers in a box (owner decision: a full, not
+ * collapsed, Telegram quote, as Description is long free text). Only text after
+ * "Description:" that matches a band's Description cell (ignoring how spaces and line
+ * breaks differ) is boxed, so the box always holds the sheet's own words.
+ * html: the escaped answer. Returns it with the boxes added.
+ */
+function boxDescriptions(html, snapshot) {
+  var seen = {};
+  (snapshot.bands || []).forEach(function (band) {
+    var text = String(bandDescriptionText(band) || '').trim();
+    if (!text || seen[text]) return;
+    seen[text] = true;
+    var words = tplEscape(text).split(/\s+/).map(function (w) { return w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+    var pattern = new RegExp('(^|\\n)(Description:?)[ \\t]*\\n?(' + words.join('\\s+') + ')(?=\\n|$)', 'g');
+    html = html.replace(pattern, function (all, start, label, body) {
+      return start + label + '\n<blockquote>' + body + '</blockquote>';
+    });
+  });
+  return html;
 }
 
 /** Deletes bot messages: one at a time, or up to 100 per call (falling back one by one). */
@@ -459,9 +484,12 @@ function assistantMessages(job, now) {
     'same tool with the same arguments twice.',
     'Copy names and @handles exactly as they appear in tool results.',
     'Never mention a band by its number alone. Bands in tool results have a "display" text: its heading',
-    '(e.g. "Two-song band #11"), one 🎵 line per song (artist - title), then one member per line.',
+    '(e.g. "Two-song band #11"), one 🎵 line per song (artist - title, the second-row text in brackets),',
+    'then one member per line.',
     'When you mention a band, copy its display text as it is, with a blank line between bands. If you',
     'list more than 5 bands, copy just the heading and the 🎵 song lines of each.',
+    'When you give a band\'s Description, write "Description:" on its own line, then the text exactly as',
+    'in the tool result on the next line.',
     '',
     'About the sheet: bands come from two signup sheets, one-song and two-song bands, each numbered.',
     'Each band has songs (first-row and second-row text, e.g. original language and English), a point of',

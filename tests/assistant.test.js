@@ -135,11 +135,29 @@ test('a lookup repeated with the same arguments gets a short note, not the data 
   assert.match(calls[0].messages[0].content, /never call the\nsame tool with the same arguments twice/);
 });
 
+test('a band description in an answer goes in a full (not collapsed) box, only if it is the sheet text', () => {
+  const { ctx, runDeferred } = setup({ replies: ['One-song band #1\nDescription: need keys\nComplete? No'] });
+  g.handleUpdate(msg(OWNER, 'tell me about one-song band 1'), ctx);
+  runDeferred();
+  assert.equal(ctx.api.sent(OWNER).map((c) => c.params.text).find((t) => t.startsWith('<b>[SoC LaaS')),
+    '<b>[SoC LaaS Response]</b>\nOne-song band #1\nDescription:\n<blockquote>need keys</blockquote>\nComplete? No');
+
+  const s = g.buildSnapshot(workbook({
+    oneSong: [{ number: 2, cells: { 'Song Title': ['A', ''], 'Description / Points to Take Note': ['Keys & <vox>\n  then   more', ''] } }],
+    players: []
+  }));
+  // Spaces and line breaks may differ; the text is escaped first, as in the reply.
+  assert.equal(g.boxDescriptions('Description:\nKeys &amp; &lt;vox&gt; then more\nYouTube: x', s),
+    'Description:\n<blockquote>Keys &amp; &lt;vox&gt; then more</blockquote>\nYouTube: x');
+  assert.equal(g.boxDescriptions('Description: keys and vox wanted', s), 'Description: keys and vox wanted', 'reworded: no box');
+  assert.equal(g.boxDescriptions('It says Keys &amp; &lt;vox&gt; then more', s), 'It says Keys &amp; &lt;vox&gt; then more', 'no label: no box');
+});
+
 test('the tools return the right parts of the sheet', () => {
   const s = snap();
   const bands = g.runAssistantTool(s, 'list_bands', {});
   assert.deepEqual(bands[0], {
-    display: 'One-song band #1\n🎵 夜の歌\nDrums: Lee (@lee)\nPOC: Kim (@kim)',
+    display: 'One-song band #1\n🎵 夜の歌 (Night Song)\nDrums: Lee (@lee)\nPOC: Kim (@kim)',
     bandType: 'one-song', number: '1', songs: ['夜の歌 / Night Song'], complete: 'No',
     pointOfContact: { name: 'Kim', handle: '@kim' },
     emptyRoles: ['Lead Vocals', 'Harmony Vocals', 'Lead Guitar', 'Rhythm Guitar', 'Keyboard', 'Bass']
@@ -165,7 +183,7 @@ test('the tools return the right parts of the sheet', () => {
   }]);
 
   assert.deepEqual(g.runAssistantTool(s, 'find_person', { query: '@lee' }).map((h) => [h.where, h.as]), [
-    ['One-song band #1 (🎵 夜の歌)', 'Drums'],
+    ['One-song band #1 (🎵 夜の歌 (Night Song))', 'Drums'],
     ['Two-song band #4 (🎵 Day Song)', 'sub in 1'],
     ['Two-song band #4 (🎵 Day Song)', 'other instrument']
   ]);

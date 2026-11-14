@@ -181,11 +181,11 @@ test('band cards: songs (first row, artist - title), one member per line, short 
   const snapshot = g.buildSnapshot(wb);
   const b11 = snapshot.bands.find((b) => b.id === 'two-song#11');
   assert.equal(g.bandCardText(b11),
-    'Two-song band #11\n🎵 夜バンド - 夜の歌\n🎵 Blue Sky\nLead Vocals: Amy (@amy)\nDrums: Lee (@lee)\n' +
+    'Two-song band #11\n🎵 夜バンド - 夜の歌 (Night Band - Night Song)\n🎵 Blue Sky\nLead Vocals: Amy (@amy)\nDrums: Lee (@lee)\n' +
     'Sub In 1: Bo (@bo)\nOther: Cy (Sax) (@cy)\nPOC: Amy (@amy)');
-  assert.equal(g.bandCardText(b11, true), 'Two-song band #11\n🎵 夜バンド - 夜の歌\n🎵 Blue Sky');
-  assert.equal(g.tplBandCard(b11, true, '👀 '), '👀 <b>Two-song band #11</b>\n🎵 夜バンド - 夜の歌\n🎵 Blue Sky');
-  assert.equal(g.bandLabelText(b11), 'Two-song band #11 (🎵 夜バンド - 夜の歌, 🎵 Blue Sky)');
+  assert.equal(g.bandCardText(b11, true), 'Two-song band #11\n🎵 夜バンド - 夜の歌 (Night Band - Night Song)\n🎵 Blue Sky');
+  assert.equal(g.tplBandCard(b11, true, '👀 '), '👀 <b>Two-song band #11</b>\n🎵 夜バンド - 夜の歌 (Night Band - Night Song)\n🎵 Blue Sky');
+  assert.equal(g.bandLabelText(b11), 'Two-song band #11 (🎵 夜バンド - 夜の歌 (Night Band - Night Song), 🎵 Blue Sky)');
   assert.equal(g.bandButtonLabel(b11), '2-song #11 · 夜バンド - 夜の歌');
   const long = { ...b11, songs: [{ title: { primary: 'A'.repeat(50), alternate: '' }, artist: { primary: '', alternate: '' } }] };
   assert.equal(Array.from(g.bandButtonLabel(long)).length, 40);
@@ -198,5 +198,5 @@ test('band cards: songs (first row, artist - title), one member per line, short 
   const many = { bands: Array.from({ length: 30 }, (_, i) => ({ ...b11, id: 'two-song#' + i, number: String(i) })) };
   const big = g.watchingMessage(many.bands.map((b) => b.id), many);
   assert.ok(big.text.length <= 4096 && !big.text.includes('Lead Vocals'), 'compact when too long');
-  assert.match(big.text, /👀 <b>Two-song band #0<\/b>\n🎵 夜バンド - 夜の歌\n🎵 Blue Sky\n\n/);
+  assert.ok(big.text.includes('👀 <b>Two-song band #0</b>\n🎵 夜バンド - 夜の歌 (Night Band - Night Song)\n🎵 Blue Sky\n\n'));
 });
