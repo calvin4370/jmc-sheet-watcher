@@ -76,7 +76,7 @@ function myBandsMessage(snapshot, sub) {
   var lines = [header + 'Matched by your Telegram handle ' + tplEscape(sub.username) + '.'];
   if (!found.bands.length) lines.push('', 'You\'re not in any band in the sheet.');
   found.bands.forEach(function (f) {
-    lines.push('', tplBandLine(f.band), tplEscape(f.roles.join(', ')));
+    lines.push('', tplBandCard(f.band), '<i>You: ' + tplEscape(f.roles.join(', ')) + '</i>');
   });
   if (found.player) lines.push('', 'You\'re in Player Finder: ' + tplEscape(String(found.player.instruments || '').replace(/\n/g, ', ')));
   if (found.bands.length) {

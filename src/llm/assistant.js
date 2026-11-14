@@ -119,8 +119,10 @@ function trimmedPerson(p) {
   return p ? { name: String(p.name).trim(), handle: String(p.handle).trim() } : null;
 }
 
+/** "One-song band #3 (🎵 夜バンド - 夜の歌)", for find_person results. */
 function bandLabelText(b) {
-  return b.bandType + ' band #' + (b.number || '?');
+  var songs = bandSongsText(b);
+  return bandHeading(b) + (songs ? ' (🎵 ' + songs + ')' : '');
 }
 
 function songTitles(b) {
@@ -132,6 +134,7 @@ function songTitles(b) {
 /** Full details of one band, for get_band and get_all_bands. */
 function bandDetails(band) {
   var out = {
+    display: bandCardText(band),
     bandType: band.bandType,
     number: band.number,
     sheetRows: band.sourceRows,
@@ -165,6 +168,7 @@ function runAssistantTool(snapshot, name, args) {
       return snapshot.bands.map(function (b) {
         var filled = b.members.map(function (m) { return m.role; });
         return {
+          display: bandCardText(b),
           bandType: b.bandType,
           number: b.number,
           songs: songTitles(b),
@@ -386,6 +390,7 @@ function deleteChatMessages(later, chatId, ids) {
 function runAssistantConversation(later, job, snapshot) {
   var messages = assistantMessages(job, later.now());
   var rounds = SETTINGS.llm.maxToolRounds;
+  var seen = {}; // sheet lookups already made for this question
   for (var round = 1; ; round++) {
     var last = round >= rounds;
     var message = later.chat(messages, ASSISTANT_TOOLS.concat(actionToolDefinitions(job.isOwner)), last ? 'none' : 'auto');
@@ -404,12 +409,31 @@ function runAssistantConversation(later, job, snapshot) {
       } catch (e) {
         later.log('Could not show a tool call: ' + e.message);
       }
-      var result = isActionTool(name)
-        ? runActionTool(later, job, name, args)
-        : runAssistantTool(snapshot, name, args || {});
+      var result = repeatedLookup(seen, name, args);
+      if (!result) {
+        result = isActionTool(name)
+          ? runActionTool(later, job, name, args)
+          : runAssistantTool(snapshot, name, args || {});
+      }
       messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(result) });
     });
   }
+}
+
+/**
+ * A sheet lookup already made with the same arguments in this question: returns a short
+ * pointer to the earlier result instead of sending the data again. Otherwise remembers
+ * the call and returns null. Commands (action tools) always run.
+ */
+function repeatedLookup(seen, name, args) {
+  if (isActionTool(name)) return null;
+  var key = name + ' ' + JSON.stringify(args || {});
+  if (seen[key]) {
+    return { note: 'You already called ' + name + ' with these arguments for this question. ' +
+      'Its result is earlier in this conversation and has not changed. Use it to answer.' };
+  }
+  seen[key] = true;
+  return null;
 }
 
 /** Plain text only: drop Markdown emphasis the model may add anyway. */
@@ -430,7 +454,14 @@ function assistantMessages(job, now) {
     'up and found, or what is missing. Then say what would let you answer, e.g. a name, @handle or',
     'band number.',
     'Be concise. Plain text only: no Markdown, no HTML.',
+    'Reply with only the final answer for the person: no working, no notes about what you looked up or',
+    'will do next, and say each thing once. Tool results stay in this conversation, so never call the',
+    'same tool with the same arguments twice.',
     'Copy names and @handles exactly as they appear in tool results.',
+    'Never mention a band by its number alone. Bands in tool results have a "display" text: its heading',
+    '(e.g. "Two-song band #11"), a 🎵 line with its songs (artist - title), then one member per line.',
+    'When you mention a band, copy its display text as it is, with a blank line between bands. If you',
+    'list more than 5 bands, copy just the first two lines (heading and 🎵 songs) of each.',
     '',
     'About the sheet: bands come from two signup sheets, one-song and two-song bands, each numbered.',
     'Each band has songs (first-row and second-row text, e.g. original language and English), a point of',

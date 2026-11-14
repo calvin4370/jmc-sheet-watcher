@@ -37,20 +37,33 @@ function watchNotice(change) {
   return '👀 You\'re watching ' + tplEscape(watchedBandLabel(change.band.id));
 }
 
-/** The /watching message and its remove buttons (the bot adds Close). */
-function watchingMessage(watching) {
+/**
+ * The /watching message and its remove buttons (the bot adds Close). Each band is shown
+ * as a band card (songs and members) from the last sheet check; if that's too long for one
+ * Telegram message, songs only.
+ */
+function watchingMessage(watching, snapshot) {
   if (!watching || !watching.length) {
     return {
       text: '<b>[Watched Bands]</b>\nYou aren\'t watching any bands. Add one with /watch one-song 3.',
       replyMarkup: null
     };
   }
+  var bands = {};
+  ((snapshot && snapshot.bands) || []).forEach(function (b) { bands[b.id] = b; });
+  var build = function (compact) {
+    return '<b>[Watched Bands]</b>\n\n' + watching.map(function (id) {
+      return bands[id] ? tplBandCard(bands[id], compact, '👀 ')
+        : '👀 <b>' + tplEscape(watchedBandLabel(id)) + '</b>\n<i>Not in the sheet right now.</i>';
+    }).join('\n\n') + '\n\nTap a button to stop watching one.';
+  };
+  var text = build(false);
+  if (text.length > TELEGRAM_MAX_LENGTH - 100) text = build(true);
   return {
-    text: '<b>[Watched Bands]</b>\n' + watching.map(function (id) { return '👀 ' + tplEscape(watchedBandLabel(id)); }).join('\n') +
-      '\n\nTap a button to stop watching one.',
+    text: text,
     replyMarkup: {
       inline_keyboard: watching.map(function (id) {
-        return [{ text: '❌ ' + watchedBandLabel(id), callback_data: 'unwatch:' + id }];
+        return [{ text: '❌ ' + (bands[id] ? bandButtonLabel(bands[id]) : watchedBandLabel(id)), callback_data: 'unwatch:' + id }];
       })
     }
   };

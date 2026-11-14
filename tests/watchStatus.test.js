@@ -55,7 +55,12 @@ test('/watch, /watching and /unwatch', () => {
   const command = msg(FAN, '/watching');
   g.handleUpdate(command, ctx);
   const list = api.sent(FAN).at(-1).params;
-  assert.equal(list.text, '<b>[Watched Bands]</b>\n👀 One-song band #3\n👀 Two-song band #4\n\nTap a button to stop watching one.');
+  assert.equal(list.text, '<b>[Watched Bands]</b>\n\n' +
+    '👀 <b>One-song band #3</b>\n🎵 Song 3\nBass: Kim (@kim)\nPOC: Kim (@kim)\n\n' +
+    '👀 <b>Two-song band #4</b>\n🎵 Song 4\nBass: Kim (@kim)\nPOC: Kim (@kim)\n\n' +
+    'Tap a button to stop watching one.');
+  assert.deepEqual(list.reply_markup.inline_keyboard.flat().map((b) => b.text).slice(0, 2),
+    ['❌ 1-song #3 · Song 3', '❌ 2-song #4 · Song 4']);
   assert.deepEqual(list.reply_markup.inline_keyboard.flat().map((b) => b.callback_data),
     ['unwatch:one-song#3', 'unwatch:two-song#4', 'close:' + command.message.message_id]);
 
@@ -156,4 +161,41 @@ test('help lists the new commands', () => {
   assert.doesNotMatch(help, /\/status/);
   say(ctx, OWNER, '/help');
   assert.match(texts(api, OWNER).at(-1), /\/status – check the bot is working/);
+});
+
+test('band cards: songs (first row, artist - title), one member per line, short button labels', () => {
+  const wb = workbook({
+    oneSong: [band(1)],
+    twoSong: [{
+      number: 11,
+      cells: {
+        'Song 1 Title': ['夜の歌', 'Night Song'], 'Original Artist 1': ['夜バンド', 'Night Band'],
+        'Song 2 Title': ['', 'Blue Sky'], 'Original Artist 2': ['', ''],
+        'Point-of-Contact': ['Amy', '@amy'], 'Vocal 1 (Melody)': ['Amy', '@amy'], 'Drum': [' Lee ', '@lee'],
+        'Player Subbing In 1': ['Bo', '@bo']
+      },
+      other: [['Cy (Sax)', '@cy']]
+    }],
+    players: []
+  });
+  const snapshot = g.buildSnapshot(wb);
+  const b11 = snapshot.bands.find((b) => b.id === 'two-song#11');
+  assert.equal(g.bandCardText(b11),
+    'Two-song band #11\n🎵 夜バンド - 夜の歌, Blue Sky\nLead Vocals: Amy (@amy)\nDrums: Lee (@lee)\n' +
+    'Sub In 1: Bo (@bo)\nOther: Cy (Sax) (@cy)\nPOC: Amy (@amy)');
+  assert.equal(g.bandCardText(b11, true), 'Two-song band #11\n🎵 夜バンド - 夜の歌, Blue Sky');
+  assert.equal(g.tplBandCard(b11, true, '👀 '), '👀 <b>Two-song band #11</b>\n🎵 夜バンド - 夜の歌, Blue Sky');
+  assert.equal(g.bandButtonLabel(b11), '2-song #11 · 夜バンド - 夜の歌');
+  const long = { ...b11, songs: [{ title: { primary: 'A'.repeat(50), alternate: '' }, artist: { primary: '', alternate: '' } }] };
+  assert.equal(Array.from(g.bandButtonLabel(long)).length, 40);
+
+  // A watched band no longer in the sheet; and a list too long for one message falls back to songs only.
+  const gone = g.watchingMessage(['one-song#9'], snapshot);
+  assert.match(gone.text, /👀 <b>One-song band #9<\/b>\n<i>Not in the sheet right now\.<\/i>/);
+  assert.equal(gone.reply_markup, undefined);
+  assert.equal(gone.replyMarkup.inline_keyboard[0][0].text, '❌ One-song band #9');
+  const many = { bands: Array.from({ length: 30 }, (_, i) => ({ ...b11, id: 'two-song#' + i, number: String(i) })) };
+  const big = g.watchingMessage(many.bands.map((b) => b.id), many);
+  assert.ok(big.text.length <= 4096 && !big.text.includes('Lead Vocals'), 'compact when too long');
+  assert.match(big.text, /👀 <b>Two-song band #0<\/b>\n🎵 夜バンド - 夜の歌, Blue Sky\n\n/);
 });

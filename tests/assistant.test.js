@@ -116,10 +116,30 @@ test('several tool calls in one round are all run and shown', () => {
   assert.deepEqual(calls[1].messages.slice(-2).map((m) => m.tool_call_id), ['a', 'b']);
 });
 
+test('a lookup repeated with the same arguments gets a short note, not the data again', () => {
+  const { ctx, calls, runDeferred } = setup({
+    replies: [
+      { tool_calls: [toolCall('a', 'get_all_bands', {})] },
+      { tool_calls: [toolCall('b', 'get_all_bands', {}), toolCall('c', 'find_person', { query: 'lee' })] },
+      { tool_calls: [toolCall('d', 'find_person', { query: 'kim' })] },
+      'Done.'
+    ]
+  });
+  g.handleUpdate(msg(OWNER, 'which bands need keys?'), ctx);
+  runDeferred();
+  const results = Object.fromEntries(calls[3].messages.filter((m) => m.role === 'tool')
+    .map((m) => [m.tool_call_id, JSON.parse(m.content)]));
+  assert.ok(Array.isArray(results.a) && results.a.length === 2, 'first call gets every band');
+  assert.match(results.b.note, /already called get_all_bands with these arguments/);
+  assert.ok(Array.isArray(results.c) && Array.isArray(results.d), 'different arguments still run');
+  assert.match(calls[0].messages[0].content, /never call the\nsame tool with the same arguments twice/);
+});
+
 test('the tools return the right parts of the sheet', () => {
   const s = snap();
   const bands = g.runAssistantTool(s, 'list_bands', {});
   assert.deepEqual(bands[0], {
+    display: 'One-song band #1\n🎵 夜の歌\nDrums: Lee (@lee)\nPOC: Kim (@kim)',
     bandType: 'one-song', number: '1', songs: ['夜の歌 / Night Song'], complete: 'No',
     pointOfContact: { name: 'Kim', handle: '@kim' },
     emptyRoles: ['Lead Vocals', 'Harmony Vocals', 'Lead Guitar', 'Rhythm Guitar', 'Keyboard', 'Bass']
@@ -145,9 +165,9 @@ test('the tools return the right parts of the sheet', () => {
   }]);
 
   assert.deepEqual(g.runAssistantTool(s, 'find_person', { query: '@lee' }).map((h) => [h.where, h.as]), [
-    ['one-song band #1', 'Drums'],
-    ['two-song band #4', 'sub in 1'],
-    ['two-song band #4', 'other instrument']
+    ['One-song band #1 (🎵 夜の歌)', 'Drums'],
+    ['Two-song band #4 (🎵 Day Song)', 'sub in 1'],
+    ['Two-song band #4 (🎵 Day Song)', 'other instrument']
   ]);
   assert.deepEqual(g.runAssistantTool(s, 'find_person', { query: 'zed' }), { error: 'Nobody matches "zed".' });
   assert.deepEqual(g.runAssistantTool(s, 'nope', {}), { error: 'Unknown tool "nope".' });

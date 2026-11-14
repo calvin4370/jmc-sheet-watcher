@@ -189,7 +189,7 @@ function handleMessage(message, ctx) {
       botSend(ctx, chatId, statsMessage(ctx.state.snapshot), withCloseButton(null, message.message_id));
       return;
     case 'watching': {
-      var watched = watchingMessage(sub.watching);
+      var watched = watchingMessage(sub.watching, ctx.state.snapshot);
       botSend(ctx, chatId, watched.text, withCloseButton(watched.replyMarkup, message.message_id));
       return;
     }
@@ -384,7 +384,7 @@ function handleCallback(cq, ctx) {
       else {
         watcher.watching = (watcher.watching || []).filter(function (w) { return w !== arg; });
         answer = 'Removed';
-        var list = watchingMessage(watcher.watching);
+        var list = watchingMessage(watcher.watching, ctx.state.snapshot);
         ctx.api.call('editMessageText', {
           chat_id: chatId,
           message_id: cq.message.message_id,

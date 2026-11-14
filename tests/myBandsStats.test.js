@@ -98,7 +98,8 @@ test('/me lists my bands and roles, and my Player Finder entry', () => {
   g.handleUpdate(command, ctx);
   const me = api.sent(FAN).at(-1).params;
   assert.equal(me.text, '<b>[Your Bands]</b>\nMatched by your Telegram handle @Amy_X.\n\n' +
-    '- One-song band #1 · Song 1\nDrums, POC\n\nYou\'re in Player Finder: Drums (3), Vox (2)\n\n' +
+    '<b>One-song band #1</b>\n🎵 Song 1\nBass: Kim (@kim)\nDrums: Amy (@amy_x)\nPOC: Amy (@amy_x)\n<i>You: Drums, POC</i>\n\n' +
+    'You\'re in Player Finder: Drums (3), Vox (2)\n\n' +
     '<i>You get every update for these bands, with a 🎸 reply.</i>');
   assert.deepEqual(me.reply_markup.inline_keyboard.flat().map((b) => b.callback_data), ['close:' + command.message.message_id]);
 
