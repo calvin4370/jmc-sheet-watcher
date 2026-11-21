@@ -25,7 +25,8 @@ var ROLE_HEADERS = [
 /*
  * Signup sheets use paired rows: the first row holds primary-language text and display
  * names, the second holds alternate-language text and Telegram handles.
- * The Points, Description and YouTube columns are intentionally not read.
+ * Points is never read; Description and YouTube are read from the band's cells
+ * (BAND_TEXT_FIELDS).
  */
 var ONE_SONG_SCHEMA = {
   bandType: 'one-song',
@@ -62,6 +63,16 @@ var TWO_SONG_SCHEMA = {
  * formula that recalculates whenever any band changes.
  */
 var IGNORED_HEADER_PREFIXES = ['points'];
+
+/**
+ * Band columns treated as normal band fields (owner decision): edits show in [Band Update]
+ * like any other field, from the code's own template (no LLM). Matched by the start of the
+ * header; both rows are read. Alerts for them follow the "Other changes" switch.
+ */
+var BAND_TEXT_FIELDS = [
+  { field: 'description', prefix: 'description', label: 'Description' },
+  { field: 'youtube', prefix: 'youtube', label: 'YouTube Link' }
+];
 
 /** Player Finder: one row per person (not paired). */
 var PLAYER_FINDER_COLUMNS = {

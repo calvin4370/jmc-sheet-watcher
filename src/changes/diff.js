@@ -58,6 +58,15 @@ function diffBand(before, after) {
     changes.push({ field: 'completion', before: before.completion, after: after.completion });
   }
 
+  // Description and YouTube Link (both rows), read from the band's cells.
+  BAND_TEXT_FIELDS.forEach(function (f) {
+    var b = bandColumnCells(before, f.prefix) || {};
+    var a = bandColumnCells(after, f.prefix) || {};
+    if (!sameText(b.primary, a.primary) || !sameText(b.alternate, a.alternate)) {
+      changes.push({ field: f.field, before: bandColumnText(before, f.prefix), after: bandColumnText(after, f.prefix) });
+    }
+  });
+
   if (personKey(before.pointOfContact) !== personKey(after.pointOfContact)) {
     changes.push({ field: 'pointOfContact', before: before.pointOfContact, after: after.pointOfContact });
   }
@@ -92,8 +101,8 @@ function diffBand(before, after) {
 }
 
 /**
- * Cells that changed in a band's "other" columns (not read into the band record and
- * not ignored, e.g. Description, YouTube Link, or columns added later).
+ * Cells that changed in a band's "other" columns (not read into the band record, not
+ * ignored, and not Description / YouTube Link: e.g. columns added later).
  * Returns [{ column, header, row: 'first'|'second', before, after }].
  */
 function diffOtherCells(before, after) {
@@ -105,7 +114,8 @@ function diffOtherCells(before, after) {
   var width = Math.max(a.header.length, b.header.length);
   var cells = [];
   for (var c = 0; c < width; c++) {
-    if (skip[c]) continue;
+    // Description and YouTube Link are band fields now (diffBand), not other columns.
+    if (skip[c] || isBandTextFieldHeader(a.header[c]) || isBandTextFieldHeader(b.header[c])) continue;
     for (var r = 0; r < 2; r++) {
       var oldText = b.rows[r][c] === undefined ? '' : b.rows[r][c];
       var newText = a.rows[r][c] === undefined ? '' : a.rows[r][c];

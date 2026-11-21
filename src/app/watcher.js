@@ -95,11 +95,35 @@ function announceRelease(ctx) {
 /**
  * Sends one alert message to a subscriber and records `id` as sent, so it is never sent
  * twice. Returns { status: 'sent' | 'skip' | 'retry', messageId }.
+ * - Too long for one Telegram message: split into several (never cut short). Each part
+ *   is recorded, so a retry only sends the parts still missing.
  * - Telegram rejects the formatting: the same text is resent without it.
+ * - Telegram refuses it even then (400): a short plain notice is sent instead, saying an
+ *   alert couldn't be shown and which band or person it was about; if even that is
+ *   refused, the owner is told. Never dropped silently.
  * - 403 (they blocked the bot): the subscriber is marked stopped.
- * - Other 400s: given up (retrying won't help). Anything else: retry on the next check.
+ * - Anything else: retry on the next check (the saved copy of the sheet isn't moved on).
  */
 function deliverOnce(ctx, sub, id, text, parseMode, replyTo) {
+  var split = splitTelegramText(text, parseMode === 'HTML');
+  var mode = split.html ? parseMode : null;
+  var firstMessageId = null;
+  for (var i = 0; i < split.parts.length; i++) {
+    var partId = split.parts.length > 1 ? id + ':part' + i : id;
+    if (split.parts.length > 1 && sub.sent.indexOf(partId) >= 0) continue;
+    var r = deliverPart(ctx, sub, split.parts[i], mode, i === 0 ? replyTo : null);
+    if (r.status === 'refused') r = deliverRefusedNotice(ctx, sub, text, r.error, replyTo);
+    if (r.status !== 'sent') return r;
+    if (i === 0) firstMessageId = r.messageId;
+    if (r.wholeAlert) break; // the notice stands in for the whole alert
+    if (split.parts.length > 1) sub.sent.push(partId);
+  }
+  sub.sent.push(id);
+  return { status: 'sent', messageId: firstMessageId };
+}
+
+/** Sends one message. Returns { status: 'sent' | 'skip' | 'retry' | 'refused', messageId, error }. */
+function deliverPart(ctx, sub, text, parseMode, replyTo) {
   try {
     var result;
     try {
@@ -108,7 +132,6 @@ function deliverOnce(ctx, sub, id, text, parseMode, replyTo) {
       if (e.status !== 400 || !parseMode) throw e;
       result = sendTelegram(ctx.api, sub.chatId, llmUnescape(text), { parseMode: null, replyTo: replyTo });
     }
-    sub.sent.push(id);
     ctx.sleep(SEND_GAP_MS);
     return { status: 'sent', messageId: result && result.message_id };
   } catch (e) {
@@ -119,11 +142,50 @@ function deliverOnce(ctx, sub, id, text, parseMode, replyTo) {
     }
     if (e.status === 400) {
       ctx.log('Telegram refused a message for chat ' + sub.chatId + ': ' + e.message);
-      sub.sent.push(id);
-      return { status: 'skip' };
+      return { status: 'refused', error: e.message };
     }
     ctx.log('Could not send to chat ' + sub.chatId + ': ' + e.message);
     return { status: 'retry' };
+  }
+}
+
+/**
+ * Telegram refused an alert: send a short plain notice in its place (the alert's header
+ * and band/person line). If that is refused too, tell the owner. Returns like deliverPart,
+ * with wholeAlert: true when the notice (or the owner's message) stands in for the alert.
+ */
+function deliverRefusedNotice(ctx, sub, text, error, replyTo) {
+  var summary = llmUnescape(text).split('\n').filter(function (l) { return l.trim(); }).slice(0, 2).join('\n');
+  var notice = '⚠ An alert couldn\'t be shown here (Telegram refused it: ' + error + ').\n' + summary +
+    '\nPlease check the sheet for this change.';
+  var r = deliverPart(ctx, sub, notice.slice(0, TELEGRAM_MAX_LENGTH), null, replyTo);
+  if (r.status === 'refused') {
+    botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Problem]</b>\nAn alert for ' + tplEscape(sub.name || sub.chatId) +
+      ' could not be sent, not even as a short notice (Telegram: ' + tplEscape(r.error) + '). It was:\n' +
+      tplEscape(summary), dismissButton());
+    return { status: 'sent', messageId: null, wholeAlert: true };
+  }
+  if (r.status === 'sent') r.wholeAlert = true;
+  return r;
+}
+
+/**
+ * After each timer run (main.js guardTimerRun): if the run crashed (an error the sheet
+ * check didn't handle itself, or saved state that can't be read), tells the owner once per
+ * distinct error; when runs work again, says so. store: { get(), set(text) } holding the
+ * last crash ('' = none), kept outside the saved state so it works even if that is broken.
+ */
+function noteTimerRun(ctx, store, error) {
+  var last = store.get() || '';
+  if (error) {
+    if (error === last) return;
+    store.set(error);
+    botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Problem]</b>\nA sheet check crashed: ' + tplEscape(error) +
+      '\nNo alerts are lost: the saved copy of the sheet only moves on after alerts are sent, so the next ' +
+      'working check catches up.', dismissButton());
+  } else if (last) {
+    store.set('');
+    botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Recovered]</b>\nSheet checks are working again.', dismissButton());
   }
 }
 
@@ -177,6 +239,13 @@ function runSheetCheck(ctx) {
   if (result.baseline) {
     state.snapshot = result.snapshot;
     ctx.log('First run: baseline saved, no alerts sent.');
+    // Never start fresh silently: if the saved copy was lost, edits since the last check
+    // can't be alerted, so the owner must know.
+    if (ctx.ownerChatId) {
+      botTrySend(ctx, ctx.ownerChatId, '<b>[Watcher Started]</b>\nSaved a fresh copy of the sheet to compare ' +
+        'against, so alerts start from now.\nIf you didn\'t just set up or reset the watcher, its saved copy ' +
+        'was lost: edits made since the last check weren\'t alerted, so please look over the sheet.', dismissButton());
+    }
     return { ok: true, baseline: true, sent: 0 };
   }
 
@@ -200,7 +269,11 @@ function runSheetCheck(ctx) {
   }
 
   var notifications = buildNotifications(result.bandChanges, result.playerChanges, ctx.rewrite);
-  var runKey = stableHash(JSON.stringify(state.snapshot));
+  // Alert IDs: the saved copy plus a round number that goes up each time the saved copy
+  // moves on after alerts. Retries of the same alerts keep their IDs (no duplicates), but
+  // an edit that is undone and then redone gets new IDs, so it is alerted again.
+  var round = state.alertRound || 0;
+  var runKey = stableHash(JSON.stringify(state.snapshot)) + (round ? ':' + round : '');
   notifications.forEach(function (n) { n.id = stableHash(runKey + JSON.stringify(n.change)); });
 
   var sent = 0;
@@ -250,6 +323,7 @@ function runSheetCheck(ctx) {
     return { ok: false, baseline: false, sent: sent };
   }
   state.snapshot = result.snapshot;
+  state.alertRound = round + 1;
   state.settling = null;
   setCheckTimer(ctx, SETTINGS.checkEveryMinutes);
   return { ok: true, baseline: false, sent: sent };

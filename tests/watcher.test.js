@@ -25,13 +25,17 @@ function setup(api = fakeApi()) {
   return { ctx, api, setSheet: (wb) => { current = wb; } };
 }
 const edited = () => workbook({ oneSong: [band({ 'Complete?': ['Yes', ''] })], players: players('Drums (4)') });
-const alertTexts = (api, chatId) => api.sent(chatId).map((c) => c.params.text.split('\n')[0]);
+// Alert headers sent to a chat (the owner's [Watcher Started] notice from the baseline left out).
+const alertTexts = (api, chatId) => api.sent(chatId).map((c) => c.params.text.split('\n')[0])
+  .filter((t) => t !== '<b>[Watcher Started]</b>');
 
-test('first check is a silent baseline', () => {
+test('first check is a baseline: no alerts, but the owner is told it started fresh', () => {
   const { ctx, api } = setup();
   const r = g.runSheetCheck(ctx);
   assert.deepEqual(r, { ok: true, baseline: true, sent: 0 });
-  assert.equal(api.calls.length, 0);
+  assert.equal(api.sent('7').length, 0);
+  assert.deepEqual(api.sent(OWNER).map((c) => c.params.text.split('\n')[0]), ['<b>[Watcher Started]</b>']);
+  assert.match(api.sent(OWNER)[0].params.text, /its saved copy was lost: edits made since the last check weren't alerted/);
   assert.ok(ctx.state.snapshot);
 });
 
@@ -68,7 +72,7 @@ test('pending, stopped and removed people get nothing', () => {
   g.runSheetCheck(ctx);
   assert.equal(api.sent('7').length, 0);
   assert.equal(api.sent('8').length, 0);
-  assert.equal(api.sent(OWNER).length, 2);
+  assert.equal(alertTexts(api, OWNER).length, 2);
 });
 
 test('a temporary send failure keeps the old snapshot; the retry skips people who already got it', () => {

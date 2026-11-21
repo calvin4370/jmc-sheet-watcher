@@ -106,7 +106,7 @@ Nothing here touches the sheet except reading it, with the `spreadsheets.readonl
 4. **Deploy the web app** (Telegram delivers bot messages to it instantly): `clasp create-deployment --description "Telegram webhook"`, then put the deployment ID in `SETTINGS.webhook.deploymentId` and `clasp push`.
 5. **Start it**: in the editor, run `setup` and approve the permissions. It checks the sheet every 5 minutes and registers the webhook. `webhookStatus` shows whether Telegram can reach the bot.
 6. **Make yourself the owner**: send `/myid` to your bot, put the number in a Script Property `TELEGRAM_OWNER_CHAT_ID`, then send `/start`.
-7. The first sheet check saves a baseline silently. Alerts start with the next change.
+7. The first sheet check saves a baseline without sending alerts, and tells the owner ([Watcher Started]). Alerts start with the next change.
 
 Other people subscribe by sending `/start` to the bot; you get an Approve/Reject message. Useful editor functions: `webhookStatus`, `checkSheetNow`, `resetBaseline`, `stopWatcher` (stops the timer and the webhook).
 

@@ -123,16 +123,48 @@ function webhookReply() {
 
 /** The timer: handles any queued bot messages, then checks the sheet. */
 function tick() {
-  runLocked(function (state, ctx) {
-    try {
-      ensureDailyReportTimer(false);
-    } catch (e) {
-      console.log('Could not set the daily report timer: ' + e.message);
-    }
-    announceRelease(ctx);
-    drainQueuedUpdates(ctx, PropertiesService.getScriptProperties());
-    runSheetCheck(ctx);
+  guardTimerRun(function () {
+    runLocked(function (state, ctx) {
+      try {
+        ensureDailyReportTimer(false);
+      } catch (e) {
+        console.log('Could not set the daily report timer: ' + e.message);
+      }
+      announceRelease(ctx);
+      drainQueuedUpdates(ctx, PropertiesService.getScriptProperties());
+      runSheetCheck(ctx);
+    });
   });
+}
+
+var LAST_CRASH_PROPERTY = 'LAST_CRASH';
+
+/**
+ * Runs a timer job; if it crashes, tells the owner on Telegram (once per distinct error,
+ * then again when it works: noteTimerRun), then rethrows so Google's own failure emails
+ * still happen as a backup.
+ */
+function guardTimerRun(run) {
+  var error = '';
+  try {
+    run();
+  } catch (e) {
+    error = String((e && e.message) || e).slice(0, 300);
+    console.error('Timer run failed: ' + error);
+  }
+  try {
+    var props = PropertiesService.getScriptProperties();
+    var ctx = appsScriptContext(null);
+    if (ctx) {
+      noteTimerRun(ctx, {
+        get: function () { return props.getProperty(LAST_CRASH_PROPERTY) || ''; },
+        set: function (v) { if (v) props.setProperty(LAST_CRASH_PROPERTY, v); else props.deleteProperty(LAST_CRASH_PROPERTY); }
+      }, error);
+    }
+  } catch (e2) {
+    console.error('Could not report the timer run: ' + e2.message);
+  }
+  if (error) throw new Error(error);
 }
 
 /** Logs whether Telegram can reach the bot (the address itself is never shown). */
@@ -202,10 +234,12 @@ function ensureDailyReportTimer(force) {
 
 /** The 9am timer: sends the owner the daily report (health checks + sheet stats). */
 function dailyReport() {
-  runLocked(function (state, ctx) {
-    if (!ctx.ownerChatId) return;
-    botSend(ctx, ctx.ownerChatId, dailyReportMessage(ctx, appsScriptHealth(ctx)), dismissButton());
-  }, 60000);
+  guardTimerRun(function () {
+    runLocked(function (state, ctx) {
+      if (!ctx.ownerChatId) return;
+      botSend(ctx, ctx.ownerChatId, dailyReportMessage(ctx, appsScriptHealth(ctx)), dismissButton());
+    }, 60000);
+  });
 }
 
 /** Gathers the daily report's health checks. */

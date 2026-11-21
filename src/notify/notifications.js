@@ -67,21 +67,69 @@ function buildNotifications(bandChanges, playerChanges, rewrite) {
       }
     }
 
-    var parseMode = 'HTML';
-    if (text.length > TELEGRAM_MAX_LENGTH) {
-      // Too long for one Telegram message: send as plain text, cut short.
-      text = llmUnescape(text);
-      text = text.slice(0, TELEGRAM_MAX_LENGTH - 1) + '…';
-      parseMode = null;
-    }
+    // Too long for one Telegram message? It's split when sent (splitTelegramText), never cut.
     return {
       inventory: change.type.indexOf('band_') === 0 ? 'bands' : 'playerFinder',
       change: change,
       text: text,
-      parseMode: parseMode,
+      parseMode: 'HTML',
       llmWritten: llmWritten
     };
   });
+}
+
+/**
+ * Splits a message that's too long for one Telegram message into parts, between lines.
+ * With HTML, tags open at a split (e.g. a <blockquote>) are closed at the end of one part
+ * and reopened at the start of the next. If a single line is too long, the message is
+ * sent as plain text instead and split anywhere. Returns { parts, html }.
+ */
+function splitTelegramText(text, html) {
+  var max = TELEGRAM_MAX_LENGTH;
+  if (text.length <= max) return { parts: [text], html: html };
+  var lines = text.split('\n');
+  if (html && lines.some(function (l) { return l.length > max - 300; })) return splitTelegramText(llmUnescape(text), false);
+  if (!html) {
+    lines = [].concat.apply([], lines.map(function (l) {
+      var pieces = [];
+      for (var i = 0; i < l.length; i += max) pieces.push(l.slice(i, i + max));
+      return pieces.length ? pieces : [''];
+    }));
+  }
+  var closeAll = function (tags) {
+    return tags.slice().reverse().map(function (t) { return '</' + t.name + '>'; }).join('');
+  };
+  var openAll = function (tags) { return tags.map(function (t) { return t.tag; }).join(''); };
+  var tagsAfter = function (tags, line) {
+    var out = tags.slice();
+    var re = /<(\/?)([a-zA-Z]+)[^>]*>/g;
+    var m;
+    while ((m = re.exec(line))) {
+      var name = m[2].toLowerCase();
+      if (!m[1]) { out.push({ name: name, tag: m[0] }); continue; }
+      for (var k = out.length - 1; k >= 0; k--) {
+        if (out[k].name === name) { out.splice(k, 1); break; }
+      }
+    }
+    return out;
+  };
+
+  var parts = [];
+  var current = null;
+  var open = [];
+  lines.forEach(function (line) {
+    var after = html ? tagsAfter(open, line) : open;
+    var candidate = current === null ? line : current + '\n' + line;
+    if ((candidate + closeAll(after)).length <= max) {
+      current = candidate;
+    } else {
+      parts.push(current + closeAll(open));
+      current = openAll(open) + line;
+    }
+    open = after;
+  });
+  if (current !== null) parts.push(current + closeAll(open));
+  return { parts: parts, html: html };
 }
 
 /** The notifications a subscriber with these alert switches should receive. */

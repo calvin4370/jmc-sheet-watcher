@@ -20,6 +20,7 @@ function emptyState() {
     lastAnnouncedRelease: '', // RELEASE.id the owner was last told about (config/release.js)
     pendingActions: {},  // SoC LaaS actions waiting for ✅ Yes (llm/actionTools.js)
     settling: null,      // { since, checks, same, hash } while waiting for edits to settle (watcher.js)
+    alertRound: 0,       // goes up each time the saved copy moves on after alerts (alert IDs, watcher.js)
     memory: {            // context for the owner's SoC LaaS questions (assistant.js)
       ownerMessages: [], // the owner's last 5 questions to SoC LaaS (not its answers)
       alerts: [],        // the last 5 alerts sent to the owner

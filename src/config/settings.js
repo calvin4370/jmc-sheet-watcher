@@ -71,7 +71,7 @@ var SETTINGS = {
     songs: true,               // song title or artist edited
     pointOfContact: true,      // point of contact changed
     completion: true,          // "Complete?" changed
-    otherChanges: true,        // [Other Change]: e.g. Description or YouTube link edited
+    otherChanges: true,        // Description / YouTube Link edits, and [Other Change] (columns added later)
 
     // Player Finder
     playerFinder: true,        // master switch for all Player Finder alerts below

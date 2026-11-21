@@ -9,7 +9,9 @@ var BAND_FIELD_ALERT = {
   otherInstrument: 'otherInstruments',
   song: 'songs',
   pointOfContact: 'pointOfContact',
-  completion: 'completion'
+  completion: 'completion',
+  description: 'otherChanges', // Description and YouTube Link used to be [Other Change]s
+  youtube: 'otherChanges'
 };
 
 /**

@@ -9,7 +9,9 @@
  * Song 2: …
  * POC: Name (@handle)
  * Description:                          (🔄 **Description:** if it changed)
- * ┃ (full description text, in an expandable box)
+ * ┃ (full description text, both rows, in an expandable box)
+ * YouTube Link:                         (same, if there is one)
+ * ┃ https://…
  * Complete: ~~No~~ → **Yes**
  *
  * Lead Guitar: 🔄 ~~Old (@old)~~ → **New (@new)**     (someone swapped in)
@@ -35,8 +37,10 @@ MESSAGE_TEMPLATES.band_changed = {
     var newPoc = after.pointOfContact;
     if (!oldPoc && !newPoc) details.push('POC: —');
     else details.push(personLine('POC', oldPoc, newPoc));
-    var description = tplBoxFieldChange('Description', bandDescriptionText(before), bandDescriptionText(after));
-    if (description) details.push(description);
+    BAND_TEXT_FIELDS.forEach(function (f) {
+      var line = tplBoxFieldChange(f.label, bandColumnText(before, f.prefix), bandColumnText(after, f.prefix));
+      if (line) details.push(line);
+    });
     details.push('Complete: ' + (sameText(before.completion, after.completion)
       ? tplInline(after.completion) || '—'
       : tplChange(tplInline(before.completion), tplInline(after.completion))));

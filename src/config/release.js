@@ -6,10 +6,13 @@
  * For every deploy: give RELEASE a new id and describe what changed in plain words.
  */
 var RELEASE = {
-  id: '2026-11-15-song-english-description-box',
+  id: '2026-11-21-no-silent-misses',
   notes: [
-    'Songs in /me, /watching and SoC LaaS answers now show the English row in brackets after the Japanese, ' +
-      'e.g. 🎵 バックナンバー - ハッピーエンド (back number - Happy End).',
-    'SoC LaaS answers show a band\'s Description in a full box, like the alerts (not collapsed).'
+    'Description and YouTube Link edits now come as a normal [Band Update] (whole band, 🔄 on the changed ' +
+      'field), written by the bot itself instead of SoC LaaS.',
+    'Fixed: an edit that was undone and then redone wasn\'t alerted the second time. Now it always is.',
+    'No more silent misses: an alert Telegram refuses is replaced by a short notice (or you\'re told), long ' +
+      'alerts are split instead of cut off, crashes are reported, and you\'re told if the bot ever has to ' +
+      'start from a fresh copy of the sheet ([Watcher Started]).'
   ]
 };

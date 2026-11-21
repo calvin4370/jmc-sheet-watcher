@@ -186,14 +186,37 @@ function tplBandDescription(band) {
   return isBlank(text) ? '' : tplExact(text);
 }
 
-/** The band's Description cell (first row) as raw text, '' if there is none. */
+/** The band's Description (both rows) as raw text, '' if there is none. */
 function bandDescriptionText(band) {
+  return bandColumnText(band, 'description');
+}
+
+/**
+ * The band's two cells in the first column whose header starts with `prefix`
+ * ({ primary, alternate }), or null if there's no such column.
+ */
+function bandColumnCells(band, prefix) {
   var block = band && band.block;
-  if (!block) return '';
+  if (!block) return null;
   for (var c = 0; c < block.header.length; c++) {
-    if (normaliseHeader(block.header[c]).indexOf('description') === 0) return block.rows[0][c] || '';
+    if (normaliseHeader(block.header[c]).indexOf(prefix) === 0) {
+      return { primary: block.rows[0][c] || '', alternate: block.rows[1][c] || '' };
+    }
   }
-  return '';
+  return null;
+}
+
+/** Both rows of that column as one text (second row on its own line), exactly as written. */
+function bandColumnText(band, prefix) {
+  var cells = bandColumnCells(band, prefix);
+  if (!cells) return '';
+  return [cells.primary, cells.alternate].filter(function (v) { return !isBlank(v); }).join('\n');
+}
+
+/** True if a header belongs to one of BAND_TEXT_FIELDS (Description, YouTube Link). */
+function isBandTextFieldHeader(header) {
+  var key = normaliseHeader(header);
+  return BAND_TEXT_FIELDS.some(function (f) { return key && key.indexOf(f.prefix) === 0; });
 }
 
 /**
@@ -350,8 +373,10 @@ function tplBandDetails(band) {
     if (text) lines.push(tplSongLabel(band, i) + ': ' + text);
   });
   lines.push(band.pointOfContact ? tplSlotLine('POC', tplPerson(band.pointOfContact), band.pointOfContact) : 'POC: —');
-  var description = tplBandDescription(band);
-  if (description) lines.push(tplBoxField('Description', description));
+  BAND_TEXT_FIELDS.forEach(function (f) {
+    var text = bandColumnText(band, f.prefix);
+    if (!isBlank(text)) lines.push(tplBoxField(f.label, tplExact(text)));
+  });
   lines.push('Complete: ' + (tplInline(band.completion) || '—'));
   return lines.join('\n');
 }
